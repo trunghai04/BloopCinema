@@ -1,0 +1,16 @@
+export { default as HomePage } from "./HomePage";
+export { default as AboutPage } from "./AboutPage";
+export { default as MoviesPage } from "./MoviesPage";
+export { default as MovieDetailPage } from "./MovieDetailPage";
+export { default as GenresPage } from "./GenresPage";
+export { default as ShowtimesPage } from "./ShowtimesPage";
+export { default as BookingPage } from "./BookingPage";
+export { default as PromotionsPage } from "./PromotionsPage";
+export { default as NewsPage } from "./NewsPage";
+export { default as ContactPage } from "./ContactPage";
+export { default as ProfilePage } from "./ProfilePage";
+export { default as LoginPage } from "./LoginPage";
+export { default as SeatSelectPage } from "./SeatSelectPage";
+export { default as PaymentPage } from "./PaymentPage";
+export { default as PaymentReturnPage } from "./PaymentReturnPage";
+export { default as TicketPage } from "./TicketPage";

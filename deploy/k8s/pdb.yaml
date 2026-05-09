@@ -1,0 +1,43 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-gateway-pdb
+  namespace: bloop-cinema
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: api-gateway
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: auth-service-pdb
+  namespace: bloop-cinema
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: auth-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: catalog-service-pdb
+  namespace: bloop-cinema
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: catalog-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: booking-service-pdb
+  namespace: bloop-cinema
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: booking-service

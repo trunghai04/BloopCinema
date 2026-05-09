@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: booking-service
+  namespace: bloop-cinema
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: booking-service
+  template:
+    metadata:
+      labels:
+        app: booking-service
+    spec:
+      containers:
+        - name: booking-service
+          image: ghcr.io/your-org/booking-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8083
+          env:
+            - name: SERVICE_PORT
+              value: "8083"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: app-secrets
+                  key: BOOKING_DATABASE_URL
+          envFrom:
+            - configMapRef:
+                name: cinema-config
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8083
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8083
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: booking-service
+  namespace: bloop-cinema
+spec:
+  selector:
+    app: booking-service
+  ports:
+    - name: http
+      port: 8083
+      targetPort: 8083

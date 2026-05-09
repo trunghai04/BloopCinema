@@ -1,0 +1,8 @@
+go 1.25.0
+
+use (
+	./services/api-gateway
+	./services/auth-service
+	./services/booking-service
+	./services/catalog-service
+)

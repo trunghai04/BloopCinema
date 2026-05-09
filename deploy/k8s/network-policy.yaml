@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-gateway-to-services
+  namespace: bloop-cinema
+spec:
+  podSelector:
+    matchLabels:
+      app: api-gateway
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: auth-service
+    - to:
+        - podSelector:
+            matchLabels:
+              app: catalog-service
+    - to:
+        - podSelector:
+            matchLabels:
+              app: booking-service

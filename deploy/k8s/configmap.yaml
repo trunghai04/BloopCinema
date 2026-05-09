@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cinema-config
+  namespace: bloop-cinema
+data:
+  AUTH_SERVICE_URL: http://auth-service:8081
+  CATALOG_SERVICE_URL: http://catalog-service:8082
+  BOOKING_SERVICE_URL: http://booking-service:8083
+  OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4318
+  NATS_URL: nats://nats:4222
+  REQUEST_TIMEOUT: 8s
+  SHUTDOWN_TIMEOUT: 10s
+  UPSTREAM_RETRY_COUNT: "2"
+  UPSTREAM_RETRY_BACKOFF: 120ms
+  UPSTREAM_PER_TRY_TIMEOUT: 2s
+  CIRCUIT_BREAKER_FAILURE_THRESHOLD: "5"
+  CIRCUIT_BREAKER_OPEN_DURATION: 20s
+  CORS_ALLOW_ORIGINS: https://cinema.example.com

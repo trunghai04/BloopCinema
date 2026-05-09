@@ -1,0 +1,182 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-auth
+  namespace: bloop-cinema
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-auth
+  template:
+    metadata:
+      labels:
+        app: postgres-auth
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: auth_user
+            - name: POSTGRES_PASSWORD
+              value: auth_service_pw_change_me
+            - name: POSTGRES_DB
+              value: auth_db
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-auth-pvc
+  strategy:
+    type: Recreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-auth-pvc
+  namespace: bloop-cinema
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 3Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-auth
+  namespace: bloop-cinema
+spec:
+  selector:
+    app: postgres-auth
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-catalog
+  namespace: bloop-cinema
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-catalog
+  template:
+    metadata:
+      labels:
+        app: postgres-catalog
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: catalog_user
+            - name: POSTGRES_PASSWORD
+              value: catalog_service_pw_change_me
+            - name: POSTGRES_DB
+              value: catalog_db
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-catalog-pvc
+  strategy:
+    type: Recreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-catalog-pvc
+  namespace: bloop-cinema
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 3Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-catalog
+  namespace: bloop-cinema
+spec:
+  selector:
+    app: postgres-catalog
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-booking
+  namespace: bloop-cinema
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres-booking
+  template:
+    metadata:
+      labels:
+        app: postgres-booking
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: booking_user
+            - name: POSTGRES_PASSWORD
+              value: booking_service_pw_change_me
+            - name: POSTGRES_DB
+              value: booking_db
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: postgres-booking-pvc
+  strategy:
+    type: Recreate
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-booking-pvc
+  namespace: bloop-cinema
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-booking
+  namespace: bloop-cinema
+spec:
+  selector:
+    app: postgres-booking
+  ports:
+    - port: 5432
+      targetPort: 5432

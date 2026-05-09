@@ -1,0 +1,222 @@
+services:
+  nats:
+    image: nats:2.10-alpine
+    container_name: cinema-nats
+    command: ["-js"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.107.0
+    container_name: cinema-otel-collector
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./deploy/observability/otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4318:4318"
+      - "9464:9464"
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: cinema-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    volumes:
+      - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.1.5
+    container_name: cinema-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    ports:
+      - "3300:3000"
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.59
+    container_name: cinema-jaeger
+    ports:
+      - "16686:16686"
+      - "14250:14250"
+    restart: unless-stopped
+
+  postgres-auth:
+    image: postgres:16
+    container_name: cinema-postgres-auth
+    environment:
+      POSTGRES_USER: auth_user
+      POSTGRES_PASSWORD: auth_service_pw_change_me
+      POSTGRES_DB: auth_db
+    ports:
+      - "5436:5432"
+    volumes:
+      - postgres_auth_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U auth_user -d auth_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  postgres-catalog:
+    image: postgres:16
+    container_name: cinema-postgres-catalog
+    environment:
+      POSTGRES_USER: catalog_user
+      POSTGRES_PASSWORD: catalog_service_pw_change_me
+      POSTGRES_DB: catalog_db
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_catalog_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U catalog_user -d catalog_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  postgres-booking:
+    image: postgres:16
+    container_name: cinema-postgres-booking
+    environment:
+      POSTGRES_USER: booking_user
+      POSTGRES_PASSWORD: booking_service_pw_change_me
+      POSTGRES_DB: booking_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_booking_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U booking_user -d booking_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  auth-service:
+    build:
+      context: ./backend/services/auth-service
+    container_name: auth-service
+    environment:
+      SERVICE_PORT: "8081"
+      DATABASE_URL: postgres://auth_user:auth_service_pw_change_me@postgres-auth:5432/auth_db?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-dev-super-secret-change-me}
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4318
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+
+    depends_on:
+      postgres-auth:
+        condition: service_healthy
+
+  catalog-service:
+    build:
+      context: ./backend/services/catalog-service
+    container_name: catalog-service
+    environment:
+      SERVICE_PORT: "8082"
+      DATABASE_URL: postgres://catalog_user:catalog_service_pw_change_me@postgres-catalog:5432/catalog_db?sslmode=disable
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4318
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "8082:8082"
+    restart: unless-stopped
+
+    depends_on:
+      postgres-catalog:
+        condition: service_healthy
+
+  booking-service:
+    build:
+      context: ./backend/services/booking-service
+    container_name: booking-service
+    environment:
+      SERVICE_PORT: "8083"
+      DATABASE_URL: postgres://booking_user:booking_service_pw_change_me@postgres-booking:5432/booking_db?sslmode=disable
+      CATALOG_SERVICE_URL: http://catalog-service:8082
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      TICKET_PRICE_PER_SEAT_VND: ${TICKET_PRICE_PER_SEAT_VND:-90000}
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4318
+      NATS_URL: nats://nats:4222
+    depends_on:
+      postgres-booking:
+        condition: service_healthy
+      nats:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8083/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "8083:8083"
+    restart: unless-stopped
+
+  api-gateway:
+    build:
+      context: ./backend/services/api-gateway
+    container_name: api-gateway
+    environment:
+      SERVICE_PORT: "8080"
+      AUTH_SERVICE_URL: http://auth-service:8081
+      CATALOG_SERVICE_URL: http://catalog-service:8082
+      BOOKING_SERVICE_URL: http://booking-service:8083
+      REQUEST_TIMEOUT: 8s
+      SHUTDOWN_TIMEOUT: 10s
+      UPSTREAM_RETRY_COUNT: 2
+      UPSTREAM_RETRY_BACKOFF: 120ms
+      UPSTREAM_PER_TRY_TIMEOUT: 2s
+      CIRCUIT_BREAKER_FAILURE_THRESHOLD: 5
+      CIRCUIT_BREAKER_OPEN_DURATION: 20s
+      CORS_ALLOW_ORIGINS: http://localhost:5173,https://cinema.bloop.io.vn
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4318
+    depends_on:
+      - auth-service
+      - catalog-service
+      - booking-service
+      - otel-collector
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # Web: trên điện thoại cùng Wi‑Fi mở http://<IP-máy-chạy-Docker>:5173
+  # (frontend gọi API qua /api → nginx proxy → api-gateway, không dùng localhost).
+  cinema-web:
+    build:
+      context: ./frontend
+    container_name: cinema-web
+    depends_on:
+      - api-gateway
+    ports:
+      - "5173:80"
+    restart: unless-stopped
+
+volumes:
+  postgres_auth_data:
+  postgres_catalog_data:
+  postgres_booking_data:
