@@ -204,7 +204,7 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # Web: trên điện thoại cùng Wi‑Fi mở http://<IP-máy-chạy-Docker>:5173
+  # Web: trên điện thoại cùng Wi‑Fi mở http://<IP-máy-chạy-Docker>:5174
   # (frontend gọi API qua /api → nginx proxy → api-gateway, không dùng localhost).
   cinema-web:
     build:
@@ -213,7 +213,7 @@ services:
     depends_on:
       - api-gateway
     ports:
-      - "5173:80"
+      - "5174:80"
     restart: unless-stopped
 
 volumes:

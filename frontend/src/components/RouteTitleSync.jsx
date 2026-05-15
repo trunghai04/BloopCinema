@@ -12,13 +12,13 @@ const STATIC_TITLES = {
   "/booking": "Đặt chỗ",
   "/promotions": "Khuyến mãi",
   "/news": "Tin tức",
-  "/contact": "Liên hệ",
+  "/contact": "Hỗ trợ khách hàng",
   "/profile": "Hồ sơ",
   "/login": "Đăng nhập",
   "/book/seats": "Chọn ghế",
   "/book/payment": "Thanh toán",
   "/book/payment/return": "Hoàn tất thanh toán",
-  "/book/ticket": "Vé điện tử"
+  "/book/ticket": "Vé điện tử",
 };
 
 export default function RouteTitleSync() {

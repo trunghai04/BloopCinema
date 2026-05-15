@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   getMovies,
   getReservationShowtimeSeats,
-  getShowtimes
+  getShowtimes,
 } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
 import { normalizeAgeRating, ratingForMovie } from "../../utils/movieRating";
@@ -30,7 +30,7 @@ function timeLabel(iso) {
   return new Date(iso).toLocaleTimeString("vi-VN", {
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false
+    hour12: false,
   });
 }
 
@@ -59,17 +59,17 @@ export default function ShowtimesPage() {
       .catch((e) =>
         setLoadError(
           e?.message ||
-            "Không tải được lịch chiếu. Kiểm tra api-gateway và kết nối mạng."
-        )
+            "Không tải được lịch chiếu. Kiểm tra api-gateway và kết nối mạng.",
+        ),
       );
   }, []);
 
   const sortedShowtimes = useMemo(
     () =>
       [...showtimes].sort((a, b) =>
-        String(a.startAt).localeCompare(String(b.startAt))
+        String(a.startAt).localeCompare(String(b.startAt)),
       ),
-    [showtimes]
+    [showtimes],
   );
 
   const isPastShowtime = (st) => {
@@ -99,7 +99,7 @@ export default function ShowtimesPage() {
       dateKey
         ? sortedShowtimes.filter((st) => localDateKey(st.startAt) === dateKey)
         : [],
-    [sortedShowtimes, dateKey]
+    [sortedShowtimes, dateKey],
   );
 
   const moviesById = useMemo(() => {
@@ -116,7 +116,9 @@ export default function ShowtimesPage() {
     });
     return [...groups.entries()].map(([movieId, sts]) => ({
       movie: moviesById.get(movieId),
-      showtimes: sts.sort((a, b) => String(a.startAt).localeCompare(String(b.startAt)))
+      showtimes: sts.sort((a, b) =>
+        String(a.startAt).localeCompare(String(b.startAt)),
+      ),
     }));
   }, [showtimesForDay, moviesById]);
 
@@ -129,10 +131,10 @@ export default function ShowtimesPage() {
         getReservationShowtimeSeats(st.id)
           .then((d) => ({
             id: st.id,
-            n: Math.max(0, SEAT_CAPACITY - (d.occupied?.length || 0))
+            n: Math.max(0, SEAT_CAPACITY - (d.occupied?.length || 0)),
           }))
-          .catch(() => ({ id: st.id, n: null }))
-      )
+          .catch(() => ({ id: st.id, n: null })),
+      ),
     ).then((rows) => {
       if (cancelled) return;
       const next = {};
@@ -183,7 +185,9 @@ export default function ShowtimesPage() {
               <span className="showtimes-by-cinema__tab-sep">/</span>
               <span className="showtimes-by-cinema__tab-month">{tab.mm}</span>
               <span className="showtimes-by-cinema__tab-sep"> - </span>
-              <span className="showtimes-by-cinema__tab-weekday">{tab.weekday}</span>
+              <span className="showtimes-by-cinema__tab-weekday">
+                {tab.weekday}
+              </span>
             </span>
           </button>
         ))}
@@ -191,55 +195,70 @@ export default function ShowtimesPage() {
 
       <p className="showtimes-by-cinema__note">Suất chiếu muộn từ 22h00</p>
 
-      {groupedByMovie.map(({ movie, showtimes: sts }) => (
-        <article key={movie?.id || sts[0]?.movieId} className="showtimes-by-cinema__movie">
-          <div className="showtimes-by-cinema__poster-wrap">
-            {movie?.posterUrl ? (
-              <img className="showtimes-by-cinema__poster" src={movie.posterUrl} alt="" />
-            ) : null}
-            <span className="showtimes-by-cinema__rating">
-              {movie?.id ? normalizeAgeRating(movie?.ageRating) || ratingForMovie(movie.id) : "T13"}
-            </span>
-            {movie?.trailerYoutubeId ? (
-              <button
-                type="button"
-                className="movie-card-beta__trailer-play"
-                aria-label={`Xem trailer ${movie.title}`}
-                onClick={() => setTrailerMovie(movie)}
-              >
-                ▶
-              </button>
-            ) : null}
-          </div>
-          <div className="showtimes-by-cinema__body">
-            <h3 className="showtimes-by-cinema__movie-title">
-              {movie?.title || sts[0]?.movieId}
-            </h3>
-            <p className="showtimes-by-cinema__meta">
-              {movie?.genre || "Đang cập nhật"} · {movie?.durationMin || "--"} phút
-            </p>
-            <p className="showtimes-by-cinema__format">2D PHỤ ĐỀ</p>
-            <div className="showtimes-by-cinema__slots">
-              {sts.map((st) => (
+      <div className="showtimes-by-cinema__movies-grid">
+        {groupedByMovie.map(({ movie, showtimes: sts }) => (
+          <article
+            key={movie?.id || sts[0]?.movieId}
+            className="showtimes-by-cinema__movie"
+          >
+            <div className="showtimes-by-cinema__poster-wrap">
+              {movie?.posterUrl ? (
+                <img
+                  className="showtimes-by-cinema__poster"
+                  src={movie.posterUrl}
+                  alt=""
+                />
+              ) : null}
+              <span className="showtimes-by-cinema__rating">
+                {movie?.id
+                  ? normalizeAgeRating(movie?.ageRating) ||
+                    ratingForMovie(movie.id)
+                  : "T13"}
+              </span>
+              {movie?.trailerYoutubeId ? (
                 <button
-                  key={st.id}
                   type="button"
-                  className="showtimes-by-cinema__slot"
-                  disabled={isPastShowtime(st)}
-                  onClick={() => setConfirmShowtime({ showtime: st, movie })}
+                  className="movie-card-beta__trailer-play"
+                  aria-label={`Xem trailer ${movie.title}`}
+                  onClick={() => setTrailerMovie(movie)}
                 >
-                  <span className="showtimes-by-cinema__slot-time">
-                    {timeLabel(st.startAt)}
-                  </span>
-                  <span className="showtimes-by-cinema__slot-seat">
-                    {seatsFree[st.id] == null ? "..." : `${seatsFree[st.id]} ghế trống`}
-                  </span>
+                  ▶
                 </button>
-              ))}
+              ) : null}
             </div>
-          </div>
-        </article>
-      ))}
+            <div className="showtimes-by-cinema__body">
+              <h3 className="showtimes-by-cinema__movie-title">
+                {movie?.title || sts[0]?.movieId}
+              </h3>
+              <p className="showtimes-by-cinema__meta">
+                {movie?.genre || "Đang cập nhật"} · {movie?.durationMin || "--"}{" "}
+                phút
+              </p>
+              <p className="showtimes-by-cinema__format">2D PHỤ ĐỀ</p>
+              <div className="showtimes-by-cinema__slots">
+                {sts.map((st) => (
+                  <button
+                    key={st.id}
+                    type="button"
+                    className="showtimes-by-cinema__slot"
+                    disabled={isPastShowtime(st)}
+                    onClick={() => setConfirmShowtime({ showtime: st, movie })}
+                  >
+                    <span className="showtimes-by-cinema__slot-time">
+                      {timeLabel(st.startAt)}
+                    </span>
+                    <span className="showtimes-by-cinema__slot-seat">
+                      {seatsFree[st.id] == null
+                        ? "..."
+                        : `${seatsFree[st.id]} ghế trống`}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
 
       {confirmShowtime ? (
         <div
@@ -262,9 +281,12 @@ export default function ShowtimesPage() {
             >
               ×
             </button>
-            <p className="movie-detail-confirm-modal__kicker">BẠN ĐANG ĐẶT VÉ XEM PHIM</p>
+            <p className="movie-detail-confirm-modal__kicker">
+              BẠN ĐANG ĐẶT VÉ XEM PHIM
+            </p>
             <h3 className="movie-detail-confirm-modal__title">
-              {confirmShowtime.movie?.title || confirmShowtime.showtime?.movieId}
+              {confirmShowtime.movie?.title ||
+                confirmShowtime.showtime?.movieId}
             </h3>
             <div className="movie-detail-confirm-modal__table">
               <div className="movie-detail-confirm-modal__head">Rạp chiếu</div>
@@ -281,7 +303,7 @@ export default function ShowtimesPage() {
                 proceedToSeatSelect(
                   confirmShowtime.showtime?.movieId,
                   confirmShowtime.showtime?.id,
-                  confirmShowtime.showtime?.hall
+                  confirmShowtime.showtime?.hall,
                 )
               }
             >
@@ -312,7 +334,9 @@ export default function ShowtimesPage() {
             >
               ×
             </button>
-            <h3 className="movie-card-beta__trailer-title">TRAILER - {trailerMovie.title}</h3>
+            <h3 className="movie-card-beta__trailer-title">
+              TRAILER - {trailerMovie.title}
+            </h3>
             <div className="trailer-embed">
               <iframe
                 title={`Trailer ${trailerMovie.title}`}
@@ -327,4 +351,3 @@ export default function ShowtimesPage() {
     </section>
   );
 }
-
