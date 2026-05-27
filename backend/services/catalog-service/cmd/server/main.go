@@ -47,6 +47,7 @@ func main() {
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux, db)
 	mux.Handle("/metrics", promhttp.Handler())
+	mux.Handle("/uploads/", http.StripPrefix("/uploads/", http.FileServer(http.Dir("/app/uploads"))))
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	metrics := newHTTPMetrics("catalog_service")

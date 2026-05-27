@@ -1,140 +1,79 @@
 package handler
 
 import (
-	"encoding/json"
+	"bytes"
 	"io"
 	"net/http"
-
-	"github.com/stripe/stripe-go/v81"
-	stripewebhook "github.com/stripe/stripe-go/v81/webhook"
-
-	"booking-service/internal/payment"
+	"os"
+	"strings"
 )
 
-type stripePaymentHandler struct {
-	gw *payment.Gateway
-}
+func RegisterStripePaymentRoutes(mux *http.ServeMux, _ any) {
+	mux.HandleFunc("/api/v1/reservations/stripe/status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		paymentURL := strings.TrimRight(strings.TrimSpace(os.Getenv("PAYMENT_SERVICE_URL")), "/")
+		if paymentURL == "" {
+			writeJSON(w, http.StatusOK, map[string]any{"stripeConfigured": false, "paymentServiceConfigured": false})
+			return
+		}
+		resp, err := http.Get(paymentURL + "/api/v1/payments/status")
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]any{"stripeConfigured": false, "paymentServiceConfigured": false})
+			return
+		}
+		defer resp.Body.Close()
+		data, _ := io.ReadAll(resp.Body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		_, _ = w.Write(data)
+	})
 
-func RegisterStripePaymentRoutes(mux *http.ServeMux, gw *payment.Gateway) {
-	h := &stripePaymentHandler{gw: gw}
-	mux.HandleFunc("/api/v1/reservations/stripe/status", h.status)
-	mux.HandleFunc("/api/v1/reservations/stripe/checkout-session", h.checkoutSession)
-	mux.HandleFunc("/api/v1/reservations/stripe/confirm", h.confirm)
-	mux.HandleFunc("/api/v1/reservations/stripe/webhook", h.webhook)
-}
-
-func (h *stripePaymentHandler) status(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]bool{
-		"stripeConfigured": h.gw != nil,
+	mux.HandleFunc("/api/v1/reservations/stripe/checkout-session", func(w http.ResponseWriter, r *http.Request) {
+		proxyToPayment(w, r, "/api/v1/payments/checkout-session")
+	})
+	mux.HandleFunc("/api/v1/reservations/stripe/confirm", func(w http.ResponseWriter, r *http.Request) {
+		proxyToPayment(w, r, "/api/v1/payments/confirm")
+	})
+	mux.HandleFunc("/api/v1/reservations/stripe/webhook", func(w http.ResponseWriter, r *http.Request) {
+		proxyToPayment(w, r, "/api/v1/payments/webhook")
 	})
 }
 
-type stripeCheckoutBody struct {
-	HoldID     string `json:"holdId"`
-	SuccessURL string `json:"successUrl"`
-	CancelURL  string `json:"cancelUrl"`
-}
-
-func (h *stripePaymentHandler) checkoutSession(w http.ResponseWriter, r *http.Request) {
+func proxyToPayment(w http.ResponseWriter, r *http.Request, targetPath string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if h.gw == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-			"error":   "stripe_not_configured",
-			"message": "Thiếu STRIPE_SECRET_KEY trên booking-service",
-		})
+	paymentURL := strings.TrimRight(strings.TrimSpace(os.Getenv("PAYMENT_SERVICE_URL")), "/")
+	if paymentURL == "" {
+		http.Error(w, "PAYMENT_SERVICE_URL is required", http.StatusFailedDependency)
 		return
 	}
-	var req stripeCheckoutBody
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid json", http.StatusBadRequest)
-		return
-	}
-	if req.HoldID == "" || req.SuccessURL == "" || req.CancelURL == "" {
-		http.Error(w, "holdId, successUrl, cancelUrl required", http.StatusBadRequest)
-		return
-	}
-	url, err := h.gw.CreateCheckoutSession(r.Context(), req.HoldID, req.SuccessURL, req.CancelURL)
+	body, _ := io.ReadAll(r.Body)
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, paymentURL+targetPath, bytes.NewReader(body))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"url": url})
-}
-
-type stripeConfirmBody struct {
-	SessionID string `json:"sessionId"`
-}
-
-func (h *stripePaymentHandler) confirm(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if h.gw == nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
-			"error":   "stripe_not_configured",
-			"message": "Thiếu STRIPE_SECRET_KEY trên booking-service",
-		})
-		return
-	}
-	var req stripeConfirmBody
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid json", http.StatusBadRequest)
-		return
-	}
-	if req.SessionID == "" {
-		http.Error(w, "sessionId required", http.StatusBadRequest)
-		return
-	}
-	out, err := h.gw.ConfirmCheckoutSession(r.Context(), req.SessionID)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	writeJSON(w, http.StatusOK, out)
-}
-
-func (h *stripePaymentHandler) webhook(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if h.gw == nil || h.gw.WebhookSecret == "" {
-		http.Error(w, "webhook disabled", http.StatusServiceUnavailable)
-		return
-	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-	if err != nil {
-		http.Error(w, "read body", http.StatusBadRequest)
-		return
-	}
-	sig := r.Header.Get("Stripe-Signature")
-	ev, err := stripewebhook.ConstructEvent(body, sig, h.gw.WebhookSecret)
-	if err != nil {
-		http.Error(w, "invalid signature", http.StatusBadRequest)
-		return
-	}
-	switch ev.Type {
-	case "checkout.session.completed":
-		var sess stripe.CheckoutSession
-		if err := json.Unmarshal(ev.Data.Raw, &sess); err != nil {
-			http.Error(w, "parse event", http.StatusBadRequest)
-			return
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(resp.Body)
+	for k, values := range resp.Header {
+		for _, v := range values {
+			w.Header().Add(k, v)
 		}
-		if sess.PaymentStatus != stripe.CheckoutSessionPaymentStatusPaid {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		_, _ = h.gw.ConfirmCheckoutSession(r.Context(), sess.ID)
-	default:
-		// ignored
 	}
-	w.WriteHeader(http.StatusOK)
+	if w.Header().Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "application/json")
+	}
+	w.WriteHeader(resp.StatusCode)
+	_, _ = w.Write(data)
 }

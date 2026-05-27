@@ -4,8 +4,7 @@ import {
   ApiError,
   createStripeCheckoutSession,
   getReservationDetail,
-  getStripePaymentStatus,
-  payReservation
+  getStripePaymentStatus
 } from "../../api/client";
 
 export default function PaymentPage() {
@@ -81,18 +80,20 @@ export default function PaymentPage() {
     setPaying(true);
     setPayError("");
     try {
-      const origin = window.location.origin;
-      const successUrl = `${origin}/book/payment/return?session_id={CHECKOUT_SESSION_ID}`;
-      const cancelUrl = `${origin}/book/payment?holdId=${encodeURIComponent(holdId)}`;
-      const { url } = await createStripeCheckoutSession({
+      const base = window.location.origin;
+      const out = await createStripeCheckoutSession({
         holdId,
-        successUrl,
-        cancelUrl
+        successUrl: `${base}/book/payment/return?session_id={CHECKOUT_SESSION_ID}`,
+        cancelUrl: `${base}/book/payment?holdId=${encodeURIComponent(holdId)}`
       });
-      window.location.href = url;
+      const url = out?.url || "";
+      if (!url) {
+        throw new Error("Không tạo được phiên Stripe Checkout.");
+      }
+      window.location.assign(url);
     } catch (e) {
       const msg =
-        e instanceof ApiError ? e.message : e?.message || "Không mở được Stripe.";
+        e instanceof ApiError ? e.message : e?.message || "Không thể khởi tạo Stripe Checkout.";
       setPayError(msg);
     } finally {
       setPaying(false);
@@ -104,19 +105,21 @@ export default function PaymentPage() {
     setPaying(true);
     setPayError("");
     try {
-      const out = await payReservation({ holdId, success });
-      if (success && out.state === "paid") {
-        navigate(`/book/ticket?holdId=${encodeURIComponent(holdId)}`, {
-          replace: true
+      if (success) {
+        const base = window.location.origin;
+        const out = await createStripeCheckoutSession({
+          holdId,
+          successUrl: `${base}/book/payment/return?session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl: `${base}/book/payment?holdId=${encodeURIComponent(holdId)}`
         });
-        return;
+        if (out?.url) {
+          window.location.assign(out.url);
+          return;
+        }
       }
-      if (!success) {
-        setPayError(
-          "Thanh toán thất bại (demo). Ghế vẫn bị giữ trong thời gian còn lại của phiên, sau đó hệ thống nhả ghế."
-        );
-        setDetail(out);
-      }
+      setPayError(
+        "Thanh toán thất bại (demo). Ghế vẫn bị giữ trong thời gian còn lại của phiên, sau đó hệ thống nhả ghế."
+      );
     } catch (err) {
       setPayError(err.message || "Giao dịch lỗi.");
       await load();

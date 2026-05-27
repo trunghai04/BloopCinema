@@ -1,13 +1,25 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import QRCode from "react-qr-code";
-import { getReservationDetail } from "../../api/client";
+import { getReservationDetail, getMovies, getShowtimes } from "../../api/client";
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("vi-VN", {
+    dateStyle: "short",
+    timeStyle: "short"
+  }).format(date);
+}
 
 export default function TicketPage() {
   const [params] = useSearchParams();
   const holdId = params.get("holdId") || "";
 
   const [detail, setDetail] = useState(null);
+  const [movies, setMovies] = useState([]);
+  const [showtimes, setShowtimes] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -16,8 +28,14 @@ export default function TicketPage() {
     setLoading(true);
     setError("");
     try {
-      const d = await getReservationDetail(holdId);
+      const [d, movieList, showtimeList] = await Promise.all([
+        getReservationDetail(holdId),
+        getMovies(),
+        getShowtimes()
+      ]);
       setDetail(d);
+      setMovies(movieList);
+      setShowtimes(showtimeList);
       if (d.state !== "paid") {
         setError("Vé chưa được thanh toán hoặc phiên không hợp lệ.");
       }
@@ -48,21 +66,40 @@ export default function TicketPage() {
     return <p className="section-muted">Đang tải vé…</p>;
   }
 
+  const seats = String(detail?.seatCodes || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const showtime = detail ? showtimes.find((s) => s.id === detail.showtimeId) || null : null;
+  const movieTitle = detail
+    ? String(detail.movieTitle || "").trim() || movies.find((m) => m.id === detail.movieId)?.title || detail.movieId || "-"
+    : "-";
+  const showtimeText = detail
+    ? detail.showtimeLabel || showtime?.startAt || detail.showtimeStartAt || detail.showtimeId || "-"
+    : "-";
+  const roomText = detail
+    ? String(detail.hall || "").trim() || String(showtime?.hall || "").trim() || String(detail.theaterName || "").trim() || "-"
+    : "-";
+
   if (error || !detail || detail.state !== "paid") {
     return (
       <section>
         <p className="book-error">{error || "Không có vé hợp lệ."}</p>
-        <Link to="/movies" className="cta-link">
-          Về trang phim
-        </Link>
+        <div className="book-actions">
+          <Link
+            to={`/book/payment?holdId=${encodeURIComponent(holdId)}`}
+            className="cta-link"
+          >
+            Quay lại thanh toán
+          </Link>
+          <Link to="/movies" className="cta-link">
+            Về trang phim
+          </Link>
+        </div>
       </section>
     );
   }
-
-  const seats = detail.seatCodes
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
 
   return (
     <section className="ticket-page">
@@ -78,8 +115,13 @@ export default function TicketPage() {
           <strong>Email:</strong> {detail.userEmail}
         </p>
         <p>
-          <strong>Phim (id):</strong> {detail.movieId} · <strong>Suất:</strong>{" "}
-          {detail.showtimeId}
+          <strong>Phim:</strong> {movieTitle}
+        </p>
+        <p>
+          <strong>Suất:</strong> {showtimeText}
+        </p>
+        <p>
+          <strong>Phòng:</strong> {roomText}
         </p>
         <div className="ticket-qr-wrap">
           <QRCode

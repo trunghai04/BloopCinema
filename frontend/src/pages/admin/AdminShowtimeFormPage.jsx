@@ -1,15 +1,29 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { getAdminMovies, getAdminShowtimes, upsertAdminShowtime } from "../../api/client";
+import { getAdminMovies, getAdminSeatLayouts, getAdminShowtimes, getAdminTheaters, upsertAdminShowtime } from "../../api/client";
 import { setDocumentTitle } from "../../utils/documentTitle";
 
-const EMPTY_SHOWTIME = { id: "", movieId: "", hall: "Hall A", startAt: "" };
+const EMPTY_SHOWTIME = { id: "", movieId: "", theaterId: "", hall: "", startAt: "" };
 
 function toDatetimeLocalValue(iso) {
   const d = new Date(iso);
   if (!Number.isFinite(d.getTime())) return "";
   const pad = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function toUtcIsoFromDatetimeLocal(value) {
+  if (!value) return "";
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return "";
+  return parsed.toISOString();
+}
+
+function formatPreview(iso) {
+  if (!iso) return "--";
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return "--";
+  return d.toLocaleString("vi-VN", { dateStyle: "short", timeStyle: "short" });
 }
 
 export default function AdminShowtimeFormPage() {
@@ -21,6 +35,8 @@ export default function AdminShowtimeFormPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [movies, setMovies] = useState([]);
+  const [layouts, setLayouts] = useState([]);
+  const [theaters, setTheaters] = useState([]);
   const [draft, setDraft] = useState({ ...EMPTY_SHOWTIME });
 
   useEffect(() => {
@@ -31,10 +47,12 @@ export default function AdminShowtimeFormPage() {
     let cancelled = false;
     setLoading(true);
     setError("");
-    Promise.all([getAdminMovies(), getAdminShowtimes()])
-      .then(([mv, sts]) => {
+    Promise.all([getAdminMovies(), getAdminShowtimes(), getAdminSeatLayouts(), getAdminTheaters()])
+      .then(([mv, sts, lts, ths]) => {
         if (cancelled) return;
         setMovies(mv || []);
+        setLayouts(lts || []);
+        setTheaters(ths || []);
         if (!isEdit) {
           setDraft({ ...EMPTY_SHOWTIME });
           return;
@@ -48,6 +66,7 @@ export default function AdminShowtimeFormPage() {
         setDraft({
           ...EMPTY_SHOWTIME,
           ...found,
+          theaterId: found.theaterId || found.theater || found.cinema || "hanoi",
           startAt: toDatetimeLocalValue(found.startAt)
         });
       })
@@ -62,15 +81,38 @@ export default function AdminShowtimeFormPage() {
     };
   }, [isEdit, showtimeId]);
 
-  const canSubmit = useMemo(() => Boolean(draft.id && draft.movieId && draft.startAt && draft.hall), [draft]);
+  const hallOptions = useMemo(() => {
+    const halls = layouts
+      .filter((layout) => {
+        const theaterId = String(layout?.theaterId || layout?.theater || layout?.cinema || "").trim();
+        return theaterId === draft.theaterId;
+      })
+      .map((layout) => String(layout.hall || "").trim())
+      .filter(Boolean);
+    return [...new Set(halls)].sort((a, b) => a.localeCompare(b, "vi"));
+  }, [layouts, draft.theaterId]);
+
+  const theaterOptions = useMemo(() => {
+    return (theaters || []).map((theater) => ({
+      id: theater.id,
+      label: theater.name,
+    }));
+  }, [theaters]);
 
   async function submit(e) {
     e.preventDefault();
-    if (!canSubmit) return;
     setError("");
     try {
-      const normalizedStartAt = draft.startAt ? new Date(draft.startAt).toISOString() : "";
-      await upsertAdminShowtime({ ...draft, startAt: normalizedStartAt });
+      const normalizedStartAt = toUtcIsoFromDatetimeLocal(draft.startAt);
+      const payload = {
+        ...draft,
+        startAt: normalizedStartAt,
+        theaterId: draft.theaterId,
+        theater: draft.theaterId,
+        cinema: draft.theaterId,
+        hall: String(draft.hall || "").trim()
+      };
+      await upsertAdminShowtime(payload);
       navigate("/admin");
     } catch (err) {
       setError(err?.message || "Lưu suất chiếu thất bại.");
@@ -84,7 +126,12 @@ export default function AdminShowtimeFormPage() {
       <header className="admin-console__header">
         <div className="admin-console__intro">
           <h1>{isEdit ? "Sửa suất chiếu" : "Thêm suất chiếu"}</h1>
-          <p>Chuẩn hóa `startAt` sang ISO UTC trước khi lưu.</p>
+          <p>Chuẩn hóa `startAt` sang ISO UTC trước khi lưu. Dữ liệu preview hiển thị theo giờ địa phương.</p>
+          {!draft.id || !draft.movieId || !draft.startAt || !draft.hall ? (
+            <p className="section-muted" style={{ marginTop: 8 }}>
+              Điền đủ mã suất, phim, rạp chiếu và giờ chiếu rồi bấm tạo/cập nhật.
+            </p>
+          ) : null}
         </div>
         <button type="button" className="btn-secondary" onClick={() => navigate("/admin")}>
           Quay lại
@@ -94,7 +141,7 @@ export default function AdminShowtimeFormPage() {
       {error ? <p className="book-error">{error}</p> : null}
 
       <div className="admin-grid">
-        <form className="item-card admin-form admin-panel" onSubmit={submit}>
+        <form className="item-card admin-form admin-panel admin-showtime-form" onSubmit={submit}>
           <h2>Thông tin suất</h2>
           <input
             placeholder="showtime id (vd: st200)"
@@ -110,27 +157,47 @@ export default function AdminShowtimeFormPage() {
               </option>
             ))}
           </select>
-          <input
-            placeholder="Hall"
+          <select
+            value={draft.theaterId}
+            onChange={(e) => setDraft((p) => ({ ...p, theaterId: e.target.value, hall: "" }))}
+          >
+            <option value="">-- chọn rạp --</option>
+            {theaterOptions.map((theater) => (
+              <option key={theater.id} value={theater.id}>
+                {theater.label}
+              </option>
+            ))}
+          </select>
+          <select
             value={draft.hall}
             onChange={(e) => setDraft((p) => ({ ...p, hall: e.target.value }))}
-          />
+            disabled={!draft.theaterId}
+          >
+            <option value="">-- chọn hall --</option>
+            {hallOptions.map((hall) => (
+              <option key={hall} value={hall}>
+                {hall}
+              </option>
+            ))}
+          </select>
           <input
             type="datetime-local"
             value={draft.startAt}
             onChange={(e) => setDraft((p) => ({ ...p, startAt: e.target.value }))}
           />
-          <button type="submit" disabled={!canSubmit}>
+          <button type="submit">
             {isEdit ? "Cập nhật suất" : "Tạo suất"}
           </button>
         </form>
 
-        <div className="item-card admin-panel">
+        <div className="item-card admin-panel admin-showtime-preview">
           <h2>Preview</h2>
-          <p className="section-muted" style={{ marginTop: 0 }}>
-            {draft.movieId || "--"} · {draft.hall || "--"} ·{" "}
-            {draft.startAt ? new Date(draft.startAt).toLocaleString("vi-VN") : "--"}
-          </p>
+          <div className="admin-showtime-preview__meta">
+            <div><strong>Phim:</strong> {movies.find((m) => m.id === draft.movieId)?.title || draft.movieId || "--"}</div>
+            <div><strong>Rạp:</strong> {theaterOptions.find((t) => t.id === draft.theaterId)?.label || "--"}</div>
+            <div><strong>Hall:</strong> {draft.hall || "--"}</div>
+            <div><strong>Giờ chiếu:</strong> {formatPreview(draft.startAt)}</div>
+          </div>
         </div>
       </div>
     </section>

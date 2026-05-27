@@ -10,7 +10,7 @@ const EMPTY_MOVIE = {
   durationMin: 120,
   ageRating: "T13",
   description: "",
-  language: "Tiếng Việt",
+  language: "",
   premiereDate: "",
   director: "",
   cast: "",
@@ -27,6 +27,16 @@ function readFileAsDataURL(file) {
     reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
     reader.readAsDataURL(file);
   });
+}
+
+function formatDateVN(value) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}-${mm}-${yyyy}`;
 }
 
 export default function AdminMovieFormPage() {
@@ -87,7 +97,20 @@ export default function AdminMovieFormPage() {
     try {
       const payload = {
         ...movieDraft,
-        durationMin: Number(movieDraft.durationMin) || 120
+        id: String(movieDraft.id || "").trim(),
+        title: String(movieDraft.title || "").trim(),
+        genre: String(movieDraft.genre || "").trim(),
+        durationMin: Number(movieDraft.durationMin) || 120,
+        ageRating: String(movieDraft.ageRating || "T13").trim(),
+        description: String(movieDraft.description || "").trim(),
+        language: String(movieDraft.language || "").trim(),
+        premiereDate: String(movieDraft.premiereDate || "").trim(),
+        director: String(movieDraft.director || "").trim(),
+        cast: String(movieDraft.cast || "").trim(),
+        posterUrl: String(movieDraft.posterUrl || "").trim(),
+        backdropUrl: String(movieDraft.backdropUrl || "").trim(),
+        trailerYoutubeId: String(movieDraft.trailerYoutubeId || "").trim(),
+        synopsis: String(movieDraft.synopsis || "").trim()
       };
       await upsertAdminMovie(payload);
       navigate("/admin");
@@ -116,29 +139,45 @@ export default function AdminMovieFormPage() {
         <form className="item-card admin-form admin-panel" onSubmit={submit}>
           <h2>Thông tin phim</h2>
           <input
+            name="movieId"
+            autoComplete="off"
             placeholder="movie id (vd: mv100)"
             value={movieDraft.id}
             disabled={isEdit}
             onChange={(e) => setMovieDraft((p) => ({ ...p, id: e.target.value }))}
           />
           <input
+            name="movieTitle"
+            autoComplete="off"
             placeholder="Tên phim"
             value={movieDraft.title}
             onChange={(e) => setMovieDraft((p) => ({ ...p, title: e.target.value }))}
           />
           <input
+            name="movieGenre"
+            autoComplete="off"
             placeholder="Thể loại"
             value={movieDraft.genre}
             onChange={(e) => setMovieDraft((p) => ({ ...p, genre: e.target.value }))}
           />
           <input
+            name="movieDurationMin"
             type="number"
             min={1}
+            autoComplete="off"
             placeholder="Thời lượng (phút)"
             value={movieDraft.durationMin}
             onChange={(e) => setMovieDraft((p) => ({ ...p, durationMin: e.target.value }))}
           />
+          <input
+            name="movieLanguage"
+            autoComplete="off"
+            placeholder="Ngôn ngữ"
+            value={movieDraft.language}
+            onChange={(e) => setMovieDraft((p) => ({ ...p, language: e.target.value }))}
+          />
           <select
+            name="movieAgeRating"
             value={movieDraft.ageRating}
             onChange={(e) => setMovieDraft((p) => ({ ...p, ageRating: e.target.value }))}
             title="Giới hạn độ tuổi"
@@ -149,38 +188,51 @@ export default function AdminMovieFormPage() {
             <option value="T18">T18</option>
           </select>
           <input
+            name="movieDescription"
+            autoComplete="off"
             placeholder="Mô tả ngắn (description)"
             value={movieDraft.description}
             onChange={(e) => setMovieDraft((p) => ({ ...p, description: e.target.value }))}
           />
           <textarea
+            name="movieSynopsis"
+            autoComplete="off"
             placeholder="Giới thiệu / Synopsis"
             value={movieDraft.synopsis}
             onChange={(e) => setMovieDraft((p) => ({ ...p, synopsis: e.target.value }))}
             rows={6}
           />
           <input
+            name="movieLanguage"
+            autoComplete="off"
             placeholder="Ngôn ngữ"
             value={movieDraft.language}
             onChange={(e) => setMovieDraft((p) => ({ ...p, language: e.target.value }))}
           />
           <input
+            name="moviePremiereDate"
             type="date"
             placeholder="Ngày khởi chiếu"
             value={movieDraft.premiereDate}
             onChange={(e) => setMovieDraft((p) => ({ ...p, premiereDate: e.target.value }))}
           />
           <input
+            name="movieDirector"
+            autoComplete="off"
             placeholder="Đạo diễn"
             value={movieDraft.director}
             onChange={(e) => setMovieDraft((p) => ({ ...p, director: e.target.value }))}
           />
           <input
+            name="movieCast"
+            autoComplete="off"
             placeholder="Diễn viên"
             value={movieDraft.cast}
             onChange={(e) => setMovieDraft((p) => ({ ...p, cast: e.target.value }))}
           />
           <input
+            name="movieTrailerYoutubeId"
+            autoComplete="off"
             placeholder="Trailer Youtube ID"
             value={movieDraft.trailerYoutubeId}
             onChange={(e) => setMovieDraft((p) => ({ ...p, trailerYoutubeId: e.target.value }))}
@@ -244,9 +296,14 @@ export default function AdminMovieFormPage() {
             </div>
             <div style={{ minWidth: 0 }}>
               <h3 style={{ margin: "2px 0 6px" }}>{movieDraft.title || "Tên phim"}</h3>
-              <p className="section-muted" style={{ margin: 0 }}>
-                {movieDraft.genre || "Thể loại"} · {Number(movieDraft.durationMin) || 120} phút
-              </p>
+              <div className="section-muted" style={{ margin: 0, display: "grid", gap: 4 }}>
+                <p style={{ margin: 0 }}>
+                  <strong>Thể loại: </strong>{movieDraft.genre || "—"}
+                </p>
+                <p style={{ margin: 0 }}>
+                  <strong>Thời lượng: </strong>{movieDraft.durationMin ? `${Number(movieDraft.durationMin)} phút` : "—"}
+                </p>
+              </div>
               <div style={{ height: 10 }} />
               <dl className="movie-detail-meta-list">
                 <dt>Đạo diễn</dt>
@@ -256,7 +313,7 @@ export default function AdminMovieFormPage() {
                 <dt>Ngôn ngữ</dt>
                 <dd>{movieDraft.language || "—"}</dd>
                 <dt>Ngày khởi chiếu</dt>
-                <dd>{movieDraft.premiereDate || "—"}</dd>
+                <dd>{formatDateVN(movieDraft.premiereDate)}</dd>
               </dl>
             </div>
           </div>

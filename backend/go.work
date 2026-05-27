@@ -5,4 +5,7 @@ use (
 	./services/auth-service
 	./services/booking-service
 	./services/catalog-service
+	./services/order-service
+	./services/payment-service
+	./services/user-service
 )

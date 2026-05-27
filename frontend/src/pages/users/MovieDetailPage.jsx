@@ -2,11 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { getMovies, getReservationShowtimeSeats, getShowtimes } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
+import { useTheater } from "../../context/TheaterContext";
 import { setDocumentTitle } from "../../utils/documentTitle";
 import { normalizeAgeRating, ratingForMovie } from "../../utils/movieRating";
-import logo from "../../assets/logo_rounded.png";
 
-const SEAT_CAPACITY = 60;
 
 const WEEKDAY_SHORT = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
 
@@ -37,10 +36,40 @@ function formatDateDMY(iso) {
   return new Date(iso).toLocaleDateString("vi-VN");
 }
 
+function getSeatCapacity(layout) {
+  const capacity = Number(layout?.capacity);
+  if (Number.isFinite(capacity) && capacity > 0) return capacity;
+
+  const seats = Array.isArray(layout?.seats) ? layout.seats : [];
+  const enabledSeats = seats.filter((seat) => seat?.enabled !== false);
+  if (enabledSeats.length > 0) return enabledSeats.length;
+
+  const rows = Array.isArray(layout?.rows) ? layout.rows.length : 0;
+  const cols = Array.isArray(layout?.cols) ? Number(layout.cols) : 0;
+  if (rows > 0 && cols > 0) return rows * cols;
+
+  return 0;
+}
+
+function parsePremiereDate(raw) {
+  const value = String(raw || "").trim();
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+  const m = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m) {
+    const [, dd, mm, yyyy] = m;
+    const alt = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+    if (!Number.isNaN(alt.getTime())) return alt;
+  }
+  return null;
+}
+
 export default function MovieDetailPage() {
   const { movieId } = useParams();
   const navigate = useNavigate();
   const { isLoggedIn } = useAuth();
+  const { selectedTheaterId, selectedTheater } = useTheater();
   const [movie, setMovie] = useState(null);
   const [showtimes, setShowtimes] = useState([]);
   const [showtimeId, setShowtimeId] = useState("");
@@ -58,12 +87,18 @@ export default function MovieDetailPage() {
     Promise.all([getMovies(), getShowtimes()])
       .then(([movies, sts]) => {
         setMovie(movies.find((item) => item.id === movieId) || null);
-        setShowtimes(sts.filter((s) => s.movieId === movieId));
+        setShowtimes(
+          sts.filter((s) => {
+            if (String(s.movieId) !== String(movieId)) return false;
+            const theaterId = String(s.theaterId || s.theater || s.cinema || "").toLowerCase();
+            return !selectedTheaterId || theaterId === String(selectedTheaterId).toLowerCase() || !theaterId;
+          })
+        );
       })
       .catch((e) =>
         setLoadError(
           e?.message ||
-            "Không tải được dữ liệu phim. Kiểm tra kết nối API trên điện thoại."
+            "Không tải được dữ liệu phim."
         )
       )
       .finally(() => setLoading(false));
@@ -89,6 +124,9 @@ export default function MovieDetailPage() {
   const rating = movie
     ? normalizeAgeRating(movie.ageRating) || ratingForMovie(movie.id)
     : "T13";
+  const premiereDate = parsePremiereDate(movie?.premiereDate);
+  const isUpcomingMovie = Boolean(premiereDate && premiereDate.getTime() > Date.now());
+  const hasShowtimes = showtimes.length > 0;
 
   const sortedShowtimes = useMemo(
     () =>
@@ -146,15 +184,21 @@ export default function MovieDetailPage() {
         getReservationShowtimeSeats(st.id)
           .then((d) => ({
             id: st.id,
-            n: Math.max(0, SEAT_CAPACITY - (d.occupied?.length || 0))
+            occupied: d.occupied || [],
+            layout: d,
           }))
-          .catch(() => ({ id: st.id, n: null }))
+          .catch(() => ({ id: st.id, occupied: null, layout: null }))
       )
     ).then((rows) => {
       if (cancelled) return;
       const o = {};
-      rows.forEach(({ id, n }) => {
-        o[id] = n;
+      rows.forEach(({ id, occupied, layout }) => {
+        if (!layout || occupied == null) {
+          o[id] = null;
+          return;
+        }
+        const capacity = getSeatCapacity(layout);
+        o[id] = Math.max(0, capacity - occupied.length);
       });
       setSeatsFree(o);
     });
@@ -202,13 +246,6 @@ export default function MovieDetailPage() {
       </nav>
 
       <div className="movie-detail-title-block">
-        <img
-          className="movie-detail-title-block__logo"
-          src={logo}
-          alt=""
-          width={44}
-          height={44}
-        />
         <h1 className="movie-detail-title-block__h">{movie.title}</h1>
       </div>
 
@@ -249,68 +286,67 @@ export default function MovieDetailPage() {
         </div>
       </div>
 
-      <section className="movie-detail-showtimes" aria-label="Suất chiếu">
-        <h2 className="movie-detail-showtimes__heading">Chọn suất</h2>
-        {dateTabs.length ? (
-          <div className="movie-detail-date-tabs" role="tablist">
-            {dateTabs.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                role="tab"
-                aria-selected={dateKey === tab.key}
-                className={
-                  dateKey === tab.key
-                    ? "movie-detail-date-tab movie-detail-date-tab--active"
-                    : "movie-detail-date-tab"
-                }
-                onClick={() => setDateKey(tab.key)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        ) : (
-          <p className="section-muted">Chưa có lịch chiếu.</p>
-        )}
-
-        {showtimesForDay.length ? (
-          <>
-            <h3 className="movie-detail-format-label">2D PHỤ ĐỀ</h3>
-            <div className="movie-detail-slot-grid">
-              {showtimesForDay.map((st) => {
-                const past = isPastShowtime(st);
-                return (
+      {!isUpcomingMovie && hasShowtimes ? (
+        <section className="movie-detail-showtimes" aria-label="Suất chiếu">
+          <h2 className="movie-detail-showtimes__heading">Chọn suất</h2>
+          {dateTabs.length ? (
+            <div className="movie-detail-date-tabs" role="tablist">
+              {dateTabs.map((tab) => (
                 <button
-                  key={st.id}
+                  key={tab.key}
                   type="button"
+                  role="tab"
+                  aria-selected={dateKey === tab.key}
                   className={
-                    showtimeId === st.id
-                      ? "movie-detail-slot movie-detail-slot--active"
-                      : "movie-detail-slot"
+                    dateKey === tab.key
+                      ? "movie-detail-date-tab movie-detail-date-tab--active"
+                      : "movie-detail-date-tab"
                   }
-                  disabled={past}
-                  onClick={() => {
-                    setShowtimeId(st.id);
-                    setConfirmShowtime(st);
-                  }}
+                  onClick={() => setDateKey(tab.key)}
                 >
-                  <span className="movie-detail-slot__time">
-                    {formatTimeHM(st.startAt)}
-                  </span>
-                  <span className="movie-detail-slot__seat">
-                    {seatsFree[st.id] == null
-                      ? "…"
-                      : `${seatsFree[st.id]} ghế trống`}
-                  </span>
-                  <span className="movie-detail-slot__hall">{st.hall}</span>
-                  {past ? <span className="section-muted">Đã chiếu</span> : null}
+                  {tab.label}
                 </button>
-              )})}
+              ))}
             </div>
-          </>
-        ) : null}
-      </section>
+          ) : null}
+
+          {showtimesForDay.length ? (
+            <>
+              <h3 className="movie-detail-format-label">2D PHỤ ĐỀ</h3>
+              <div className="movie-detail-slot-grid">
+                {showtimesForDay.map((st) => {
+                  const past = isPastShowtime(st);
+                  return (
+                  <button
+                    key={st.id}
+                    type="button"
+                    className={
+                      showtimeId === st.id
+                        ? "movie-detail-slot movie-detail-slot--active"
+                        : "movie-detail-slot"
+                    }
+                    disabled={past}
+                    onClick={() => {
+                      setShowtimeId(st.id);
+                      setConfirmShowtime(st);
+                    }}
+                  >
+                    <span className="movie-detail-slot__time">
+                      {formatTimeHM(st.startAt)}
+                    </span>
+                    <span className="movie-detail-slot__seat">
+                      {seatsFree[st.id] == null
+                        ? "Đang tính..."
+                        : `${seatsFree[st.id]} ghế trống`}
+                    </span>
+                    {past ? <span className="section-muted">Đã chiếu</span> : null}
+                  </button>
+                )})}
+              </div>
+            </>
+          ) : null}
+        </section>
+      ) : null}
 
       {trailerId ? (
         <section className="movie-detail-trailer-band" aria-label="Trailer">
@@ -357,7 +393,7 @@ export default function MovieDetailPage() {
               <div className="movie-detail-confirm-modal__head">Rạp chiếu</div>
               <div className="movie-detail-confirm-modal__head">Ngày chiếu</div>
               <div className="movie-detail-confirm-modal__head">Giờ chiếu</div>
-              <div>{confirmShowtime.hall || "Rạp trung tâm"}</div>
+              <div>{selectedTheater?.name || "Rạp trung tâm"}</div>
               <div>{formatDateDMY(confirmShowtime.startAt)}</div>
               <div>{formatTimeHM(confirmShowtime.startAt)}</div>
             </div>

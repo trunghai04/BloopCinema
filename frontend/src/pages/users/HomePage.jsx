@@ -1,36 +1,107 @@
 import { Link } from "react-router-dom";
-import { useEffect, useState } from "react";
-import { getMovies } from "../../api/client";
+import { useEffect, useMemo, useState } from "react";
+import { API_BASE, getMovies, getShowtimes, getAdminBanners } from "../../api/client";
 import MovieCardBeta from "../../components/MovieCardBeta";
 import MovieTabs from "../../components/MovieTabs";
 
-const TOP_MARQUEE_ITEMS = [
-  "Khuyến mãi vé đôi mỗi Thứ 4",
-  "Combo bắp nước giảm 25%",
-  "Đặt vé online nhận điểm thành viên",
-  "Suất chiếu đêm cập nhật liên tục"
+function parsePremiereDate(raw) {
+  const value = String(raw || "").trim();
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+  const m = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (m) {
+    const [, dd, mm, yyyy] = m;
+    const alt = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+    if (!Number.isNaN(alt.getTime())) return alt;
+  }
+  return null;
+}
+
+function isFuturePremiere(movie) {
+  const premiere = parsePremiereDate(movie?.premiereDate);
+  return Boolean(premiere && premiere.getTime() > Date.now());
+}
+
+const DEFAULT_HERO_BANNERS = [
+  {
+    id: "hb1",
+    image: "/news-carousel-1.jpg",
+    active: true
+  }
 ];
+
+const HERO_STORAGE_KEY = "bloop_homepage_banners";
+
+function loadStoredBanners() {
+  if (typeof window === "undefined") return DEFAULT_HERO_BANNERS;
+  try {
+    const raw = window.localStorage.getItem(HERO_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (Array.isArray(parsed) && parsed.length) return parsed;
+  } catch {
+    /* ignore */
+  }
+  return DEFAULT_HERO_BANNERS;
+}
+
+const BANNER_ASSET_BASE = API_BASE || "http://localhost:8082";
+
+function normalizeBanner(item) {
+  const image = item?.imageUrl || item?.image || "/news-carousel-1.jpg";
+  const resolvedImage = image.startsWith("/") ? `${BANNER_ASSET_BASE}${image}` : image;
+  return {
+    id: item?.id || String(Date.now()),
+    image: resolvedImage,
+    active: item?.active !== false
+  };
+}
 
 export default function HomePage() {
   const [movies, setMovies] = useState([]);
+  const [showtimes, setShowtimes] = useState([]);
   const [loadError, setLoadError] = useState("");
   const [tab, setTab] = useState("now");
   const [heroIndex, setHeroIndex] = useState(0);
+  const [heroBanners, setHeroBanners] = useState(() => loadStoredBanners());
 
   useEffect(() => {
+    let alive = true;
     setLoadError("");
-    getMovies()
-      .then(setMovies)
-      .catch((e) =>
+    Promise.allSettled([getMovies(), getShowtimes()]).then(([moviesRes, showtimesRes]) => {
+      if (!alive) return;
+      if (moviesRes.status === "fulfilled") {
+        setMovies(moviesRes.value || []);
+      }
+      if (showtimesRes.status === "fulfilled") {
+        setShowtimes(showtimesRes.value || []);
+      }
+      if (moviesRes.status === "rejected" || showtimesRes.status === "rejected") {
         setLoadError(
-          e?.message ||
+          moviesRes.reason?.message ||
+            showtimesRes.reason?.message ||
             "Không tải được danh sách phim. Kiểm tra API hoặc mạng."
-        )
-      );
+        );
+      }
+    });
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  const featured = movies.slice(0, 4);
-  const heroMovies = movies.slice(0, 6);
+  const showtimesByMovieId = useMemo(() => {
+    const map = new Map();
+    showtimes.forEach((st) => {
+      if (!map.has(st.movieId)) map.set(st.movieId, []);
+      map.get(st.movieId).push(st);
+    });
+    return map;
+  }, [showtimes]);
+
+  const nowMovies = useMemo(() => movies.filter((movie) => !isFuturePremiere(movie)), [movies]);
+  const upcomingMovies = useMemo(() => movies.filter((movie) => isFuturePremiere(movie)), [movies]);
+  const featured = nowMovies.slice(0, 4);
+  const heroMovies = nowMovies.length ? nowMovies.slice(0, 6) : movies.slice(0, 6);
 
   useEffect(() => {
     if (heroMovies.length <= 1) return undefined;
@@ -39,6 +110,30 @@ export default function HomePage() {
     }, 4000);
     return () => clearInterval(timer);
   }, [heroMovies.length]);
+
+  useEffect(() => {
+    let mounted = true;
+    getAdminBanners()
+      .then((remote) => {
+        if (!mounted) return;
+        const banners = (Array.isArray(remote) ? remote : []).map(normalizeBanner).filter((b) => b.active);
+        setHeroBanners(banners.length ? banners : DEFAULT_HERO_BANNERS);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem(HERO_STORAGE_KEY, JSON.stringify(banners.length ? banners : DEFAULT_HERO_BANNERS));
+        }
+      })
+      .catch(() => {
+        if (!mounted) return;
+        const banners = loadStoredBanners().map(normalizeBanner).filter((b) => b.active);
+        setHeroBanners(banners.length ? banners : DEFAULT_HERO_BANNERS);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const normalizedHeroBanners = heroBanners.length ? heroBanners : DEFAULT_HERO_BANNERS;
+  const activeHero = normalizedHeroBanners[heroIndex % normalizedHeroBanners.length];
 
   return (
     <section>
@@ -49,39 +144,29 @@ export default function HomePage() {
       ) : null}
 
       <div className="home-beta-lead">
-        <div className="home-top-marquee" aria-label="Thông báo rạp">
-          <div className="home-top-marquee__track">
-            {[...TOP_MARQUEE_ITEMS, ...TOP_MARQUEE_ITEMS].map((item, idx) => (
-              <span key={`${item}-${idx}`} className="home-top-marquee__item">
-                {item}
-              </span>
+        <div className="home-hero-banner home-hero-banner--cinema">
+          <img
+            className="home-hero-banner__image"
+            src={activeHero.image}
+            alt="banner"
+          />
+          <div className="home-hero-banner__overlay" />
+          <div className="home-hero-banner__dots">
+            {normalizedHeroBanners.map((banner, idx) => (
+              <button
+                key={banner.id}
+                type="button"
+                className={
+                  idx === heroIndex % normalizedHeroBanners.length
+                    ? "home-hero-banner__dot home-hero-banner__dot--active"
+                    : "home-hero-banner__dot"
+                }
+                onClick={() => setHeroIndex(idx)}
+                aria-label={`Xem banner ${banner.id}`}
+              />
             ))}
           </div>
         </div>
-        {heroMovies.length ? (
-          <div className="home-hero-banner">
-            <img
-              className="home-hero-banner__image"
-              src={heroMovies[heroIndex].backdropUrl || heroMovies[heroIndex].posterUrl}
-              alt=""
-            />
-            <div className="home-hero-banner__dots">
-              {heroMovies.map((m, idx) => (
-                <button
-                  key={m.id}
-                  type="button"
-                  className={
-                    idx === heroIndex
-                      ? "home-hero-banner__dot home-hero-banner__dot--active"
-                      : "home-hero-banner__dot"
-                  }
-                  onClick={() => setHeroIndex(idx)}
-                  aria-label={`Xem banner ${m.title}`}
-                />
-              ))}
-            </div>
-          </div>
-        ) : null}
       </div>
 
       <MovieTabs active={tab} onChange={setTab} />
@@ -94,6 +179,8 @@ export default function HomePage() {
                 key={movie.id}
                 movie={movie}
                 showHot={idx === 0}
+                showBuyButton={(showtimesByMovieId.get(movie.id) || []).length > 0}
+                statusLabel={isFuturePremiere(movie) ? "Phim sắp chiếu" : ""}
               />
             ))}
           </div>
@@ -103,11 +190,28 @@ export default function HomePage() {
             </Link>
           </p>
         </>
+      ) : tab === "upcoming" ? (
+        <>
+          <div className="movie-grid-beta">
+            {upcomingMovies.slice(0, 4).map((movie, idx) => (
+              <MovieCardBeta
+                key={movie.id}
+                movie={movie}
+                showHot={idx === 0}
+                showBuyButton={false}
+                statusLabel="Phim sắp chiếu"
+              />
+            ))}
+          </div>
+          <p style={{ textAlign: "center", marginTop: 24 }}>
+            <Link to="/movies" className="cta-link">
+              Xem tất cả phim sắp chiếu →
+            </Link>
+          </p>
+        </>
       ) : (
         <p className="section-muted" style={{ textAlign: "center", padding: "32px 0" }}>
-          {tab === "upcoming"
-            ? "Phim sắp chiếu đang được cập nhật."
-            : "Ưu đãi suất đặc biệt xem tại mục khuyến mãi."}
+          Ưu đãi suất đặc biệt xem tại mục khuyến mãi.
         </p>
       )}
     </section>

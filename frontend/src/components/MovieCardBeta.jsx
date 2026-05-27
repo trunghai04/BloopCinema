@@ -4,7 +4,7 @@ import TicketIcon from "./TicketIcon";
 import { normalizeAgeRating, ratingForMovie } from "../utils/movieRating";
 
 /** Thẻ phim kiểu rạp: poster + badge tuổi + CTA MUA VÉ (navy + icon tím/hồng). */
-export default function MovieCardBeta({ movie, showHot = false }) {
+export default function MovieCardBeta({ movie, showHot = false, showBuyButton = true, statusLabel = "" }) {
   const rating = normalizeAgeRating(movie?.ageRating) || ratingForMovie(movie.id);
   const [showTrailer, setShowTrailer] = useState(false);
   const trailerId = String(movie?.trailerYoutubeId || "").trim();
@@ -40,6 +40,7 @@ export default function MovieCardBeta({ movie, showHot = false }) {
         <Link to={`/movies/${movie.id}`} className="movie-card-beta__title">
           {movie.title}
         </Link>
+        {statusLabel ? <p className="movie-card-beta__status">{statusLabel}</p> : null}
         <p className="movie-card-beta__meta">
           <span className="movie-card-beta__label">Thể loại:</span> {movie.genre}
         </p>
@@ -47,12 +48,16 @@ export default function MovieCardBeta({ movie, showHot = false }) {
           <span className="movie-card-beta__label">Thời lượng:</span>{" "}
           {movie.durationMin} phút
         </p>
-        <Link to={`/movies/${movie.id}`} className="btn-mua-ve">
-          <span className="btn-mua-ve__icon" aria-hidden>
-            <TicketIcon />
-          </span>
-          <span className="btn-mua-ve__label">MUA VÉ</span>
-        </Link>
+        {showBuyButton ? (
+          <Link to={`/movies/${movie.id}`} className="btn-mua-ve">
+            <span className="btn-mua-ve__icon" aria-hidden>
+              <TicketIcon />
+            </span>
+            <span className="btn-mua-ve__label">MUA VÉ</span>
+          </Link>
+        ) : (
+          <span className="movie-card-beta__no-showtimes">Chưa có lịch chiếu</span>
+        )}
       </div>
 
       {showTrailer ? (

@@ -71,19 +71,22 @@ func main() {
 	}
 	port := getEnv("SERVICE_PORT", "8080")
 	authURL := mustParseURL(getEnv("AUTH_SERVICE_URL", "http://localhost:8081"))
+	userURL := mustParseURL(getEnv("USER_SERVICE_URL", "http://localhost:8084"))
 	catalogURL := mustParseURL(getEnv("CATALOG_SERVICE_URL", "http://localhost:8082"))
 	bookingURL := mustParseURL(getEnv("BOOKING_SERVICE_URL", "http://localhost:8083"))
+	orderURL := mustParseURL(getEnv("ORDER_SERVICE_URL", "http://localhost:8086"))
 	allowedOrigins := parseAllowedOrigins(
 		getEnv(
 			"CORS_ALLOW_ORIGINS",
 			"http://localhost:5173,https://cinema.bloop.io.vn",
 		),
 	)
+	_ = userURL
 	requestTimeout := getEnvDuration("REQUEST_TIMEOUT", 8*time.Second)
 	shutdownTimeout := getEnvDuration("SHUTDOWN_TIMEOUT", 10*time.Second)
 	upstreamRetryCount := getEnvInt("UPSTREAM_RETRY_COUNT", 2)
 	upstreamRetryBackoff := getEnvDuration("UPSTREAM_RETRY_BACKOFF", 120*time.Millisecond)
-	upstreamPerTryTimeout := getEnvDuration("UPSTREAM_PER_TRY_TIMEOUT", 2*time.Second)
+	upstreamPerTryTimeout := getEnvDuration("UPSTREAM_PER_TRY_TIMEOUT", 5*time.Second)
 	circuitFailureThreshold := getEnvInt("CIRCUIT_BREAKER_FAILURE_THRESHOLD", 5)
 	circuitOpenDuration := getEnvDuration("CIRCUIT_BREAKER_OPEN_DURATION", 20*time.Second)
 	resilience := newUpstreamResilience(
@@ -107,16 +110,23 @@ func main() {
 	proxyTransport := resilience.transport(baseTransport, logger)
 
 	proxies := []routeProxy{
+		{pathPrefix: "/api/v1/auth/login", targetURL: userURL},
+		{pathPrefix: "/api/v1/auth/register", targetURL: userURL},
 		{pathPrefix: "/api/v1/auth", targetURL: authURL},
+		{pathPrefix: "/api/v1/users", targetURL: userURL},
 		{pathPrefix: "/api/v1/movies", targetURL: catalogURL},
 		{pathPrefix: "/api/v1/genres", targetURL: catalogURL},
 		{pathPrefix: "/api/v1/showtimes", targetURL: catalogURL},
+		{pathPrefix: "/api/v1/theaters", targetURL: catalogURL},
 		{pathPrefix: "/api/v1/admin", targetURL: catalogURL},
 		{pathPrefix: "/api/v1/bookings", targetURL: bookingURL},
 		{pathPrefix: "/api/v1/reservations", targetURL: bookingURL},
+		{pathPrefix: "/api/v1/orders", targetURL: orderURL},
 		{pathPrefix: "/health/auth", targetURL: authURL},
+		{pathPrefix: "/health/users", targetURL: userURL},
 		{pathPrefix: "/health/catalog", targetURL: catalogURL},
 		{pathPrefix: "/health/booking", targetURL: bookingURL},
+		{pathPrefix: "/health/orders", targetURL: orderURL},
 	}
 
 	mux := http.NewServeMux()
@@ -132,7 +142,9 @@ func main() {
 
 	for _, p := range proxies {
 		mux.Handle(p.pathPrefix, buildProxyHandler(p.targetURL, proxyTransport, logger))
-		mux.Handle(p.pathPrefix+"/", buildProxyHandler(p.targetURL, proxyTransport, logger))
+		if !strings.HasSuffix(p.pathPrefix, "/") {
+			mux.Handle(p.pathPrefix+"/", buildProxyHandler(p.targetURL, proxyTransport, logger))
+		}
 	}
 
 	limiter := &rateLimiter{
@@ -175,11 +187,41 @@ func main() {
 func buildProxyHandler(target *url.URL, transport http.RoundTripper, logger *slog.Logger) http.Handler {
 	proxy := httputil.NewSingleHostReverseProxy(target)
 	proxy.Transport = transport
+	proxy.Director = func(req *http.Request) {
+		reqURL := *target
+		req.URL.Scheme = reqURL.Scheme
+		req.URL.Host = reqURL.Host
+		req.URL.Path = singleJoiningSlash(target.Path, req.URL.Path)
+		if target.RawQuery == "" || req.URL.RawQuery == "" {
+			req.URL.RawQuery = target.RawQuery + req.URL.RawQuery
+		} else {
+			req.URL.RawQuery = target.RawQuery + "&" + req.URL.RawQuery
+		}
+		req.Host = target.Host
+	}
+	proxy.ModifyResponse = func(resp *http.Response) error {
+		logger.Info("upstream response", "target", target.String(), "status", resp.StatusCode, "path", resp.Request.URL.Path)
+		return nil
+	}
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
 		logger.Error("upstream proxy error", "target", target.String(), "path", r.URL.Path, "error", err.Error())
-		http.Error(w, "upstream temporarily unavailable", http.StatusServiceUnavailable)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"message":"upstream temporarily unavailable"}`))
 	}
 	return proxy
+}
+
+func singleJoiningSlash(a, b string) string {
+	aSlash := strings.HasSuffix(a, "/")
+	bSlash := strings.HasPrefix(b, "/")
+	switch {
+	case aSlash && bSlash:
+		return a + b[1:]
+	case !aSlash && !bSlash:
+		return a + "/" + b
+	}
+	return a + b
 }
 
 func withCORS(allowOrigins []string) func(http.Handler) http.Handler {
@@ -321,6 +363,8 @@ func routeLabel(path string) string {
 	switch {
 	case strings.HasPrefix(path, "/api/v1/auth"):
 		return "/api/v1/auth/*"
+	case strings.HasPrefix(path, "/api/v1/users"):
+		return "/api/v1/users/*"
 	case strings.HasPrefix(path, "/api/v1/movies"):
 		return "/api/v1/movies"
 	case strings.HasPrefix(path, "/api/v1/genres"):
@@ -331,6 +375,8 @@ func routeLabel(path string) string {
 		return "/api/v1/admin/*"
 	case strings.HasPrefix(path, "/api/v1/bookings"):
 		return "/api/v1/bookings"
+	case strings.HasPrefix(path, "/api/v1/orders"):
+		return "/api/v1/orders"
 	case strings.HasPrefix(path, "/api/v1/reservations"):
 		return "/api/v1/reservations/*"
 	case strings.HasPrefix(path, "/health"):

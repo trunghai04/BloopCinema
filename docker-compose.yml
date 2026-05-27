@@ -43,9 +43,12 @@ services:
   jaeger:
     image: jaegertracing/all-in-one:1.59
     container_name: cinema-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
     ports:
       - "16686:16686"
       - "14250:14250"
+      - "4317:4317"
     restart: unless-stopped
 
   postgres-auth:
@@ -102,6 +105,42 @@ services:
       retries: 10
     restart: unless-stopped
 
+  postgres-order:
+    image: postgres:16
+    container_name: cinema-postgres-order
+    environment:
+      POSTGRES_USER: order_user
+      POSTGRES_PASSWORD: order_service_pw_change_me
+      POSTGRES_DB: order_db
+    ports:
+      - "5438:5432"
+    volumes:
+      - postgres_order_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U order_user -d order_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  postgres-user:
+    image: postgres:16
+    container_name: cinema-postgres-user
+    environment:
+      POSTGRES_USER: user_user
+      POSTGRES_PASSWORD: user_service_pw_change_me
+      POSTGRES_DB: user_db
+    ports:
+      - "5437:5432"
+    volumes:
+      - postgres_user_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user_user -d user_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   auth-service:
     build:
       context: ./backend/services/auth-service
@@ -132,6 +171,8 @@ services:
       SERVICE_PORT: "8082"
       DATABASE_URL: postgres://catalog_user:catalog_service_pw_change_me@postgres-catalog:5432/catalog_db?sslmode=disable
       OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4318
+    volumes:
+      - catalog_uploads:/app/uploads
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8082/ready"]
       interval: 10s
@@ -145,6 +186,36 @@ services:
       postgres-catalog:
         condition: service_healthy
 
+  payment-service:
+    build:
+      context: ./backend/services/payment-service
+    container_name: payment-service
+    environment:
+      SERVICE_PORT: "8085"
+      STRIPE_SECRET_KEY: sk_test_51TTcG9HH2ICst0FMUMZE2raMOLLMYPOwRVZndfQnWYhG4ELbNCHnJQspAllFETlfmMniWYcymYCbdKy4K3mpVqQZ00YtI4Z8Mz
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      TICKET_PRICE_PER_SEAT_VND: ${TICKET_PRICE_PER_SEAT_VND:-90000}
+      BOOKING_SERVICE_URL: http://booking-service:8083
+      ORDER_SERVICE_URL: http://order-service:8086
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 587
+      SMTP_USER: bloop.io.vn@gmail.com
+      SMTP_PASS: eziu bcaw sgqh qphn
+      SMTP_FROM: noreply@bloop.io.vn
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4318
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8085/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    depends_on:
+      - otel-collector
+      - booking-service
+      - order-service
+    ports:
+      - "8085:8085"
+    restart: unless-stopped
+
   booking-service:
     build:
       context: ./backend/services/booking-service
@@ -153,15 +224,22 @@ services:
       SERVICE_PORT: "8083"
       DATABASE_URL: postgres://booking_user:booking_service_pw_change_me@postgres-booking:5432/booking_db?sslmode=disable
       CATALOG_SERVICE_URL: http://catalog-service:8082
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
-      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      PAYMENT_SERVICE_URL: http://payment-service:8085
+      ORDER_SERVICE_URL: http://order-service:8086
       TICKET_PRICE_PER_SEAT_VND: ${TICKET_PRICE_PER_SEAT_VND:-90000}
       OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4318
       NATS_URL: nats://nats:4222
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 587
+      SMTP_USER: bloop.io.vn@gmail.com
+      SMTP_PASS: eziu bcaw sgqh qphn
+      SMTP_FROM: noreply@bloop.io.vn
     depends_on:
       postgres-booking:
         condition: service_healthy
       nats:
+        condition: service_started
+      order-service:
         condition: service_started
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8083/ready"]
@@ -172,6 +250,51 @@ services:
       - "8083:8083"
     restart: unless-stopped
 
+  order-service:
+    build:
+      context: ./backend/services/order-service
+    container_name: order-service
+    environment:
+      SERVICE_PORT: "8086"
+      DATABASE_URL: postgres://order_user:order_service_pw_change_me@postgres-order:5432/order_db?sslmode=disable
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4318
+    depends_on:
+      postgres-order:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8086/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "8086:8086"
+    restart: unless-stopped
+
+  user-service:
+    build:
+      context: ./backend/services/user-service
+    container_name: user-service
+    environment:
+      SERVICE_PORT: "8084"
+      DATABASE_URL: postgres://user_user:user_service_pw_change_me@postgres-user:5432/user_db?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:-dev-super-secret-change-me}
+      OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4318
+    depends_on:
+      postgres-user:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8084/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    ports:
+      - "8084:8084"
+    restart: unless-stopped
+
   api-gateway:
     build:
       context: ./backend/services/api-gateway
@@ -179,8 +302,10 @@ services:
     environment:
       SERVICE_PORT: "8080"
       AUTH_SERVICE_URL: http://auth-service:8081
+      USER_SERVICE_URL: http://user-service:8084
       CATALOG_SERVICE_URL: http://catalog-service:8082
       BOOKING_SERVICE_URL: http://booking-service:8083
+      ORDER_SERVICE_URL: http://order-service:8086
       REQUEST_TIMEOUT: 8s
       SHUTDOWN_TIMEOUT: 10s
       UPSTREAM_RETRY_COUNT: 2
@@ -189,12 +314,20 @@ services:
       CIRCUIT_BREAKER_FAILURE_THRESHOLD: 5
       CIRCUIT_BREAKER_OPEN_DURATION: 20s
       CORS_ALLOW_ORIGINS: http://localhost:5173,https://cinema.bloop.io.vn
+      CATALOG_DISABLE_SEED: "true"
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-no-reply@bloopcinema.local}
       OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4318
     depends_on:
       - auth-service
       - catalog-service
       - booking-service
+      - order-service
       - otel-collector
+      - user-service
     ports:
       - "8080:8080"
     healthcheck:
@@ -220,3 +353,6 @@ volumes:
   postgres_auth_data:
   postgres_catalog_data:
   postgres_booking_data:
+  postgres_order_data:
+  postgres_user_data:
+  catalog_uploads:

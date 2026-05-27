@@ -4,9 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 )
 
 type Movie struct {
@@ -27,19 +32,41 @@ type Movie struct {
 }
 
 type Showtime struct {
-	ID      string `json:"id"`
-	MovieID string `json:"movieId"`
-	StartAt string `json:"startAt"`
-	Hall    string `json:"hall"`
+	ID        string `json:"id"`
+	MovieID   string `json:"movieId"`
+	StartAt   string `json:"startAt"`
+	Hall      string `json:"hall"`
+	TheaterID string `json:"theaterId,omitempty"`
+}
+
+type Theater struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	City  string `json:"city,omitempty"`
+	Code  string `json:"code,omitempty"`
+	Active bool  `json:"active,omitempty"`
 }
 
 type SeatLayout struct {
+	ID           string     `json:"id,omitempty"`
+	TheaterID    string     `json:"theaterId,omitempty"`
 	Hall         string     `json:"hall"`
 	Rows         []string   `json:"rows,omitempty"`
 	Cols         int        `json:"cols,omitempty"`
+	Capacity     int        `json:"capacity,omitempty"`
 	BlockedSeats []string   `json:"blockedSeats,omitempty"`
 	Seats        []SeatNode `json:"seats,omitempty"`
 	SeatPrices   SeatPrices `json:"seatPrices,omitempty"`
+}
+
+type Banner struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	ImageURL    string `json:"imageUrl"`
+	Link        string `json:"link,omitempty"`
+	SortOrder   int    `json:"sortOrder,omitempty"`
+	Active      bool   `json:"active"`
 }
 
 type SeatPrices struct {
@@ -188,30 +215,36 @@ var movies = []Movie{
 }
 
 var showtimes = []Showtime{
-	{ID: "st001", MovieID: "mv001", StartAt: "2026-05-05T14:00:00Z", Hall: "Hall A"},
-	{ID: "st002", MovieID: "mv001", StartAt: "2026-05-05T19:00:00Z", Hall: "Hall C"},
-	{ID: "st003", MovieID: "mv002", StartAt: "2026-05-05T16:30:00Z", Hall: "Hall B"},
-	{ID: "st004", MovieID: "mv003", StartAt: "2026-05-05T20:15:00Z", Hall: "Hall D"},
-	{ID: "st005", MovieID: "mv004", StartAt: "2026-05-05T13:30:00Z", Hall: "Hall A"},
-	{ID: "st006", MovieID: "mv004", StartAt: "2026-05-05T21:00:00Z", Hall: "Hall B"},
-	{ID: "st007", MovieID: "mv005", StartAt: "2026-05-05T18:00:00Z", Hall: "Hall C"},
-	{ID: "st008", MovieID: "mv006", StartAt: "2026-05-05T10:00:00Z", Hall: "Hall D"},
-	{ID: "st009", MovieID: "mv006", StartAt: "2026-05-05T15:45:00Z", Hall: "Hall A"},
-	{ID: "st010", MovieID: "mv007", StartAt: "2026-05-05T17:00:00Z", Hall: "Hall B"},
-	{ID: "st011", MovieID: "mv008", StartAt: "2026-05-05T12:00:00Z", Hall: "Hall C"},
-	{ID: "st012", MovieID: "mv008", StartAt: "2026-05-05T22:30:00Z", Hall: "Hall D"},
-	{ID: "st013", MovieID: "mv001", StartAt: "2026-05-06T05:40:00Z", Hall: "Hall A"},
-	{ID: "st014", MovieID: "mv001", StartAt: "2026-05-06T10:00:00Z", Hall: "Hall A"},
-	{ID: "st015", MovieID: "mv001", StartAt: "2026-05-07T04:00:00Z", Hall: "Hall C"},
-	{ID: "st016", MovieID: "mv002", StartAt: "2026-05-06T13:00:00Z", Hall: "Hall B"},
-	{ID: "st017", MovieID: "mv002", StartAt: "2026-05-07T11:30:00Z", Hall: "Hall B"},
+	{ID: "st001", MovieID: "mv001", StartAt: "2026-05-05T14:00:00Z", Hall: "Hall A", TheaterID: "hanoi"},
+	{ID: "st002", MovieID: "mv001", StartAt: "2026-05-05T19:00:00Z", Hall: "Hall C", TheaterID: "hanoi"},
+	{ID: "st003", MovieID: "mv002", StartAt: "2026-05-05T16:30:00Z", Hall: "Hall B", TheaterID: "hanoi"},
+	{ID: "st004", MovieID: "mv003", StartAt: "2026-05-05T20:15:00Z", Hall: "Hall D", TheaterID: "hanoi"},
+	{ID: "st005", MovieID: "mv004", StartAt: "2026-05-05T13:30:00Z", Hall: "Hall A", TheaterID: "danang"},
+	{ID: "st006", MovieID: "mv004", StartAt: "2026-05-05T21:00:00Z", Hall: "Hall B", TheaterID: "danang"},
+	{ID: "st007", MovieID: "mv005", StartAt: "2026-05-05T18:00:00Z", Hall: "Hall C", TheaterID: "danang"},
+	{ID: "st008", MovieID: "mv006", StartAt: "2026-05-05T10:00:00Z", Hall: "Hall D", TheaterID: "danang"},
+	{ID: "st009", MovieID: "mv006", StartAt: "2026-05-05T15:45:00Z", Hall: "Hall A", TheaterID: "hcm"},
+	{ID: "st010", MovieID: "mv007", StartAt: "2026-05-05T17:00:00Z", Hall: "Hall B", TheaterID: "hcm"},
+	{ID: "st011", MovieID: "mv008", StartAt: "2026-05-05T12:00:00Z", Hall: "Hall C", TheaterID: "hcm"},
+	{ID: "st012", MovieID: "mv008", StartAt: "2026-05-05T22:30:00Z", Hall: "Hall D", TheaterID: "hcm"},
+	{ID: "st013", MovieID: "mv001", StartAt: "2026-05-06T05:40:00Z", Hall: "Hall A", TheaterID: "hanoi"},
+	{ID: "st014", MovieID: "mv001", StartAt: "2026-05-06T10:00:00Z", Hall: "Hall A", TheaterID: "hanoi"},
+	{ID: "st015", MovieID: "mv001", StartAt: "2026-05-07T04:00:00Z", Hall: "Hall C", TheaterID: "hanoi"},
+	{ID: "st016", MovieID: "mv002", StartAt: "2026-05-06T13:00:00Z", Hall: "Hall B", TheaterID: "danang"},
+	{ID: "st017", MovieID: "mv002", StartAt: "2026-05-07T11:30:00Z", Hall: "Hall B", TheaterID: "danang"},
+}
+
+var theaters = []Theater{
+	{ID: "hanoi", Name: "BloopCinema Hà Nội", City: "Hà Nội", Code: "HN", Active: true},
+	{ID: "hcm", Name: "BloopCinema Hồ Chí Minh", City: "TP.HCM", Code: "HCM", Active: true},
+	{ID: "danang", Name: "BloopCinema Đà Nẵng", City: "Đà Nẵng", Code: "DN", Active: true},
 }
 
 var seatLayouts = []SeatLayout{
-	{Hall: "Hall A", Rows: []string{"A", "B", "C", "D", "E", "F"}, Cols: 10, SeatPrices: defaultSeatPrices()},
-	{Hall: "Hall B", Rows: []string{"A", "B", "C", "D", "E", "F"}, Cols: 10, SeatPrices: defaultSeatPrices()},
-	{Hall: "Hall C", Rows: []string{"A", "B", "C", "D", "E", "F"}, Cols: 10, SeatPrices: defaultSeatPrices()},
-	{Hall: "Hall D", Rows: []string{"A", "B", "C", "D", "E", "F"}, Cols: 10, SeatPrices: defaultSeatPrices()},
+	{ID: "layout-hn-a", TheaterID: "hanoi", Hall: "Hall A", Rows: []string{"A", "B", "C", "D", "E", "F"}, Cols: 10, Capacity: 60, SeatPrices: defaultSeatPrices()},
+	{ID: "layout-hn-b", TheaterID: "hanoi", Hall: "Hall B", Rows: []string{"A", "B", "C", "D", "E", "F"}, Cols: 10, Capacity: 60, SeatPrices: defaultSeatPrices()},
+	{ID: "layout-hcm-a", TheaterID: "hcm", Hall: "Hall A", Rows: []string{"A", "B", "C", "D", "E", "F"}, Cols: 10, Capacity: 60, SeatPrices: defaultSeatPrices()},
+	{ID: "layout-dn-a", TheaterID: "danang", Hall: "Hall A", Rows: []string{"A", "B", "C", "D", "E", "F"}, Cols: 10, Capacity: 60, SeatPrices: defaultSeatPrices()},
 }
 
 var catalogDB *sql.DB
@@ -225,9 +258,13 @@ func RegisterRoutes(mux *http.ServeMux, db *sql.DB) {
 	mux.HandleFunc("/api/v1/movies", getMovies)
 	mux.HandleFunc("/api/v1/genres", getGenres)
 	mux.HandleFunc("/api/v1/showtimes", getShowtimes)
+	mux.HandleFunc("/api/v1/theaters", theatersHandler)
 	mux.HandleFunc("/api/v1/admin/movies", adminMovies)
 	mux.HandleFunc("/api/v1/admin/showtimes", adminShowtimes)
+	mux.HandleFunc("/api/v1/admin/theaters", adminTheaters)
 	mux.HandleFunc("/api/v1/admin/seat-layouts", adminSeatLayouts)
+	mux.HandleFunc("/api/v1/admin/banners", adminBanners)
+	mux.HandleFunc("/api/v1/banners", publicBanners)
 }
 
 func health(w http.ResponseWriter, _ *http.Request) {
@@ -290,6 +327,60 @@ func getShowtimes(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, items)
 }
 
+func theatersHandler(w http.ResponseWriter, r *http.Request) {
+	items, err := listTheatersDB(r.Context(), catalogDB)
+	if err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
+func adminTheaters(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		items, err := listTheatersDB(r.Context(), catalogDB)
+		if err != nil {
+			http.Error(w, "query failed", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, items)
+	case http.MethodPost:
+		var in Theater
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			http.Error(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+		in.ID = strings.TrimSpace(in.ID)
+		in.Name = strings.TrimSpace(in.Name)
+		in.City = strings.TrimSpace(in.City)
+		in.Code = strings.TrimSpace(in.Code)
+		if in.ID == "" || in.Name == "" {
+			http.Error(w, "id and name required", http.StatusBadRequest)
+			return
+		}
+		if err := upsertTheaterDB(r.Context(), catalogDB, in); err != nil {
+			http.Error(w, "upsert failed", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, in)
+	case http.MethodDelete:
+		id := strings.TrimSpace(r.URL.Query().Get("id"))
+		if id == "" {
+			http.Error(w, "id required", http.StatusBadRequest)
+			return
+		}
+		_, err := catalogDB.ExecContext(r.Context(), `DELETE FROM catalog_theaters WHERE id = $1`, id)
+		if err != nil {
+			http.Error(w, "delete failed", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 func adminMovies(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -349,10 +440,11 @@ func adminShowtimes(w http.ResponseWriter, r *http.Request) {
 		}
 		in.ID = strings.TrimSpace(in.ID)
 		in.MovieID = strings.TrimSpace(in.MovieID)
+		in.TheaterID = strings.TrimSpace(in.TheaterID)
 		in.Hall = strings.TrimSpace(in.Hall)
 		in.StartAt = strings.TrimSpace(in.StartAt)
-		if in.ID == "" || in.MovieID == "" || in.StartAt == "" || in.Hall == "" {
-			http.Error(w, "id movieId startAt hall required", http.StatusBadRequest)
+		if in.ID == "" || in.MovieID == "" || in.TheaterID == "" || in.StartAt == "" || in.Hall == "" {
+			http.Error(w, "id movieId theaterId startAt hall required", http.StatusBadRequest)
 			return
 		}
 		if err := upsertShowtimeDB(r.Context(), catalogDB, in); err != nil {
@@ -376,6 +468,161 @@ func adminShowtimes(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func computeSeatLayoutCapacity(l SeatLayout) int {
+	if l.Capacity > 0 {
+		return l.Capacity
+	}
+	if len(l.Seats) > 0 {
+		return len(l.Seats)
+	}
+	if len(l.Rows) > 0 && l.Cols > 0 {
+		return len(l.Rows) * l.Cols
+	}
+	return 0
+}
+
+
+func normalizeSeatLayout(item SeatLayout) SeatLayout {
+	item.Hall = strings.TrimSpace(item.Hall)
+	item.TheaterID = strings.TrimSpace(item.TheaterID)
+	item.Rows = normalizeRows(item.Rows)
+	item.BlockedSeats = normalizeSeatCodes(item.BlockedSeats)
+	item.Seats = normalizeSeatNodes(item.Seats)
+	item.SeatPrices = normalizeSeatPrices(item.SeatPrices)
+	if item.Capacity < 0 {
+		item.Capacity = 0
+	}
+	if item.Capacity == 0 {
+		if len(item.Seats) > 0 {
+			item.Capacity = len(item.Seats)
+		} else if item.Cols > 0 && len(item.Rows) > 0 {
+			item.Capacity = len(item.Rows) * item.Cols
+		}
+	}
+	return item
+}
+
+func publicBanners(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	items, err := listBannersDB(r.Context(), catalogDB)
+	if err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	out := make([]Banner, 0, len(items))
+	for _, b := range items {
+		if b.Active {
+			out = append(out, b)
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func adminBanners(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		items, err := listBannersDB(r.Context(), catalogDB)
+		if err != nil {
+			http.Error(w, "query failed", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, items)
+	case http.MethodPost:
+		if strings.Contains(strings.ToLower(r.Header.Get("Content-Type")), "multipart/form-data") {
+			if err := r.ParseMultipartForm(20 << 20); err != nil {
+				http.Error(w, "invalid multipart form", http.StatusBadRequest)
+				return
+			}
+			item := Banner{
+				ID:          strings.TrimSpace(r.FormValue("id")),
+				Title:       strings.TrimSpace(r.FormValue("title")),
+				Description: strings.TrimSpace(r.FormValue("description")),
+				Link:        strings.TrimSpace(r.FormValue("link")),
+				Active:      true,
+			}
+			if item.Title == "" {
+				item.Title = "Banner"
+			}
+			if active := strings.TrimSpace(r.FormValue("active")); active != "" {
+				item.Active = active == "true" || active == "1" || strings.EqualFold(active, "on")
+			}
+			if sortOrder := strings.TrimSpace(r.FormValue("sortOrder")); sortOrder != "" {
+				fmt.Sscanf(sortOrder, "%d", &item.SortOrder)
+			}
+			file, header, err := r.FormFile("image")
+			if err != nil {
+				item.ImageURL = ""
+			} else {
+				defer file.Close()
+				if item.ID == "" {
+					item.ID = fmt.Sprintf("banner-%d", time.Now().UnixNano())
+				}
+				uploadDir := filepath.Join("uploads", "banners")
+				if err := os.MkdirAll(uploadDir, 0o755); err != nil {
+					http.Error(w, "upload dir failed", http.StatusInternalServerError)
+					return
+				}
+				ext := filepath.Ext(header.Filename)
+				if ext == "" {
+					ext = ".jpg"
+				}
+				filename := item.ID + ext
+				path := filepath.Join(uploadDir, filename)
+				out, err := os.Create(path)
+				if err != nil {
+					http.Error(w, "save image failed", http.StatusInternalServerError)
+					return
+				}
+				defer out.Close()
+				if _, err := io.Copy(out, file); err != nil {
+					http.Error(w, "save image failed", http.StatusInternalServerError)
+					return
+				}
+				item.ImageURL = "/uploads/banners/" + filename
+				if err := upsertBannerDB(r.Context(), catalogDB, item); err != nil {
+					http.Error(w, "upsert failed", http.StatusInternalServerError)
+					return
+				}
+				writeJSON(w, http.StatusOK, item)
+				return
+			}
+		}
+		var in Banner
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			http.Error(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+		in.ID = strings.TrimSpace(in.ID)
+		in.Title = strings.TrimSpace(in.Title)
+		in.ImageURL = strings.TrimSpace(in.ImageURL)
+		if in.ID == "" || in.Title == "" || in.ImageURL == "" {
+			http.Error(w, "id title imageUrl required", http.StatusBadRequest)
+			return
+		}
+		if err := upsertBannerDB(r.Context(), catalogDB, in); err != nil {
+			http.Error(w, "upsert failed", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, in)
+	case http.MethodDelete:
+		id := strings.TrimSpace(r.URL.Query().Get("id"))
+		if id == "" {
+			http.Error(w, "id required", http.StatusBadRequest)
+			return
+		}
+		if err := deleteBannerDB(r.Context(), catalogDB, id); err != nil {
+			http.Error(w, "delete failed", http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 func adminSeatLayouts(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -386,8 +633,7 @@ func adminSeatLayouts(w http.ResponseWriter, r *http.Request) {
 		}
 		out := make([]SeatLayout, 0, len(items))
 		for _, l := range items {
-			clone := l
-			clone.SeatPrices = normalizeSeatPrices(clone.SeatPrices)
+			clone := normalizeSeatLayout(l)
 			out = append(out, clone)
 		}
 		writeJSON(w, http.StatusOK, out)
@@ -397,17 +643,17 @@ func adminSeatLayouts(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid json", http.StatusBadRequest)
 			return
 		}
-		in.Hall = strings.TrimSpace(in.Hall)
+		in = normalizeSeatLayout(in)
 		if in.Hall == "" {
 			http.Error(w, "hall required", http.StatusBadRequest)
 			return
 		}
-		in.Rows = normalizeRows(in.Rows)
-		in.BlockedSeats = normalizeSeatCodes(in.BlockedSeats)
-		in.Seats = normalizeSeatNodes(in.Seats)
-		in.SeatPrices = normalizeSeatPrices(in.SeatPrices)
-		if len(in.Seats) == 0 && (in.Cols <= 0 || len(in.Rows) == 0) {
-			http.Error(w, "provide seats[] or rows+cols", http.StatusBadRequest)
+		if in.TheaterID == "" {
+			http.Error(w, "theaterId required", http.StatusBadRequest)
+			return
+		}
+		if len(in.Seats) == 0 && (in.Cols <= 0 || len(in.Rows) == 0) && in.Capacity <= 0 {
+			http.Error(w, "provide seats[] or rows+cols or capacity", http.StatusBadRequest)
 			return
 		}
 		if err := upsertSeatLayoutDB(r.Context(), catalogDB, in); err != nil {
@@ -416,12 +662,17 @@ func adminSeatLayouts(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, in)
 	case http.MethodDelete:
+		id := strings.TrimSpace(r.URL.Query().Get("id"))
 		hall := strings.TrimSpace(r.URL.Query().Get("hall"))
-		if hall == "" {
-			http.Error(w, "hall required", http.StatusBadRequest)
+		key := id
+		if key == "" {
+			key = hall
+		}
+		if key == "" {
+			http.Error(w, "id or hall required", http.StatusBadRequest)
 			return
 		}
-		if err := deleteSeatLayoutDB(r.Context(), catalogDB, hall); err != nil {
+		if err := deleteSeatLayoutDB(r.Context(), catalogDB, key); err != nil {
 			http.Error(w, "delete failed", http.StatusInternalServerError)
 			return
 		}

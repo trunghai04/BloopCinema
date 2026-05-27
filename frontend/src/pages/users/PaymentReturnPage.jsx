@@ -1,52 +1,49 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { confirmStripeCheckoutSession } from "../../api/client";
+import { ApiError, confirmStripeCheckoutSession } from "../../api/client";
 
 export default function PaymentReturnPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const sessionId = params.get("session_id") || "";
-
-  const [message, setMessage] = useState("Đang xác nhận thanh toán…");
-  const [failed, setFailed] = useState(false);
+  const sessionId = params.get("session_id") || params.get("sessionId") || "";
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!sessionId) {
-      setFailed(true);
-      setMessage("Thiếu thông tin phiên thanh toán (session_id).");
+      setError("Thiếu mã phiên Stripe.");
+      setLoading(false);
       return;
     }
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await confirmStripeCheckoutSession(sessionId);
-        if (cancelled) return;
-        navigate(`/book/ticket?holdId=${encodeURIComponent(res.id)}`, {
-          replace: true
-        });
-      } catch (e) {
-        if (cancelled) return;
-        setFailed(true);
-        setMessage(e.message || "Xác nhận thanh toán thất bại.");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionId, navigate]);
+    confirmStripeCheckoutSession(sessionId)
+      .then((res) => {
+        if (res?.status === "paid") {
+          navigate(`/book/ticket?holdId=${encodeURIComponent(res.id || res.holdId || "")}`, {
+            replace: true
+          });
+          return;
+        }
+        setError("Thanh toán chưa hoàn tất.");
+      })
+      .catch((err) => {
+        setError(err instanceof ApiError ? err.message : err?.message || "Không xác nhận được thanh toán.");
+      })
+      .finally(() => setLoading(false));
+  }, [navigate, sessionId]);
+
+  if (loading) {
+    return <p className="section-muted">Đang xác nhận thanh toán Stripe…</p>;
+  }
 
   return (
     <section>
-      <h2 className="section-title">Hoàn tất thanh toán</h2>
-      <p className={failed ? "book-error" : "section-muted"}>{message}</p>
-      {failed ? (
-        <p>
-          <Link to="/movies" className="cta-link">
-            Về trang phim
-          </Link>
-        </p>
-      ) : null}
+      <h2 className="section-title">Xác nhận thanh toán</h2>
+      {error ? <p className="book-error">{error}</p> : null}
+      <p>
+        <Link to="/movies" className="cta-link">
+          Về trang phim
+        </Link>
+      </p>
     </section>
   );
 }
-

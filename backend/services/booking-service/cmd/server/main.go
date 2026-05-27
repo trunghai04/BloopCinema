@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -17,6 +16,7 @@ import (
 
 	"booking-service/internal/events"
 	"booking-service/internal/handler"
+	"booking-service/internal/order"
 	"booking-service/internal/payment"
 	"booking-service/internal/repository"
 	"github.com/prometheus/client_golang/prometheus"
@@ -76,6 +76,8 @@ func main() {
 
 	repo := repository.NewBookingRepository(db)
 	resRepo := repository.NewReservationRepository(db)
+	paymentClient := payment.NewClient(os.Getenv("PAYMENT_SERVICE_URL"))
+	orderClient := order.NewClient(os.Getenv("ORDER_SERVICE_URL"))
 	natsPublisher, err := events.NewNATSPublisher(strings.TrimSpace(os.Getenv("NATS_URL")))
 	if err != nil {
 		logger.Error("connect nats failed", "error", err.Error())
@@ -85,23 +87,10 @@ func main() {
 		defer natsPublisher.Close()
 	}
 
-	pricePerSeat := int64(90000)
-	if v := strings.TrimSpace(os.Getenv("TICKET_PRICE_PER_SEAT_VND")); v != "" {
-		if n, err := strconv.ParseInt(v, 10, 64); err == nil && n > 0 {
-			pricePerSeat = n
-		}
-	}
-	stripeGW := payment.NewGateway(
-		os.Getenv("STRIPE_SECRET_KEY"),
-		os.Getenv("STRIPE_WEBHOOK_SECRET"),
-		pricePerSeat,
-		resRepo,
-	)
-
 	mux := http.NewServeMux()
-	handler.RegisterRoutes(mux, repo)
+	handler.RegisterRoutes(mux, repo, orderClient)
 	handler.RegisterReservationRoutes(mux, resRepo, natsPublisher)
-	handler.RegisterStripePaymentRoutes(mux, stripeGW)
+	handler.RegisterStripePaymentRoutes(mux, paymentClient)
 	mux.Handle("/metrics", promhttp.Handler())
 	metrics := newHTTPMetrics("booking_service")
 

@@ -16,8 +16,8 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  const login = (email, token) => {
-    const u = { email, token };
+  const login = (email, token, profile = {}) => {
+    const u = { email, token, ...profile };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
     setUser(u);
   };

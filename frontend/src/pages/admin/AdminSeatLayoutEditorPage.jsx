@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { getAdminSeatLayouts, upsertAdminSeatLayout } from "../../api/client";
+import { getAdminSeatLayouts, getAdminTheaters, upsertAdminSeatLayout } from "../../api/client";
 import gheThuongImg from "../../assets/ghethuong.webp";
 import gheVipImg from "../../assets/ghevip.webp";
 import gheDoiImg from "../../assets/ghedoi.webp";
@@ -78,7 +78,9 @@ export default function AdminSeatLayoutEditorPage() {
   const [selectionBox, setSelectionBox] = useState(null);
   const [clipboard, setClipboard] = useState([]);
   const [pasteCount, setPasteCount] = useState(0);
+  const [theaters, setTheaters] = useState([]);
   const [layoutDraft, setLayoutDraft] = useState({
+    theaterId: "",
     hall: decodeURIComponent(hall || "Hall A"),
     rows: "A,B,C,D,E,F",
     cols: 10,
@@ -109,30 +111,47 @@ export default function AdminSeatLayoutEditorPage() {
     let cancelled = false;
     setLoading(true);
     setError("");
-    getAdminSeatLayouts()
-      .then((layouts) => {
+    Promise.all([getAdminSeatLayouts(), getAdminTheaters()])
+      .then(([layouts, theaterList]) => {
         if (cancelled) return;
+        setTheaters(theaterList || []);
         const targetHall = decodeURIComponent(hall || "Hall A");
+        const current = (layouts || []).find(
+          (l) => String(l.hall || "").toLowerCase() === String(targetHall).toLowerCase()
+        );
+        const inferredTheaterId = String(current?.theaterId || current?.theater || current?.cinema || theaterList[0]?.id || "").trim();
         const draftRaw = localStorage.getItem(`admin-seat-layout-draft:${targetHall}`);
         if (draftRaw) {
           try {
             const parsed = JSON.parse(draftRaw);
-            setLayoutDraft(parsed);
-            setLoading(false);
-            return;
+            const normalized = {
+              ...parsed,
+              theaterId: String(parsed?.theaterId || inferredTheaterId || "").trim(),
+              hall: String(parsed?.hall || targetHall).trim()
+            };
+            if (!normalized.theaterId) {
+              localStorage.removeItem(`admin-seat-layout-draft:${targetHall}`);
+            } else {
+              setLayoutDraft(normalized);
+              setLoading(false);
+              return;
+            }
           } catch {
-            // ignore invalid draft
+            localStorage.removeItem(`admin-seat-layout-draft:${targetHall}`);
           }
         }
-        const current = (layouts || []).find(
-          (l) => String(l.hall || "").toLowerCase() === String(targetHall).toLowerCase()
-        );
         if (!current) {
-          setLayoutDraft((prev) => ({ ...prev, hall: targetHall }));
+          setLayoutDraft((prev) => ({
+            ...prev,
+            hall: targetHall,
+            theaterId: inferredTheaterId || theaterList[0]?.id || prev.theaterId
+          }));
+          if (!inferredTheaterId) localStorage.removeItem(`admin-seat-layout-draft:${targetHall}`);
           return;
         }
         const prices = current.seatPrices || {};
         setLayoutDraft({
+          theaterId: inferredTheaterId || theaterList[0]?.id || "",
           hall: current.hall || targetHall,
           rows: (current.rows || []).join(","),
           cols: Number(current.cols) || 10,
@@ -452,7 +471,7 @@ export default function AdminSeatLayoutEditorPage() {
       const used = new Set(seats.map((s) => String(s.code || "").toUpperCase()));
       const offsetX = (pasteCount + 1) * GRID_X;
       const offsetY = (pasteCount + 1) * GRID_Y;
-      const pasted = clipboard.map((s, i) => {
+      const pasted = clipboard.map((s) => {
         const row = yToRow(s.y + offsetY);
         const col = xToCol(s.x + offsetX);
         let code = codeAt(row, col, rows);
@@ -494,8 +513,14 @@ export default function AdminSeatLayoutEditorPage() {
     setSaving(true);
     setError("");
     try {
+      const theaterId = String(layoutDraft.theaterId || "").trim();
+      const hallName = String(layoutDraft.hall || "").trim();
       const payload = {
-        hall: layoutDraft.hall,
+        id: `${theaterId}-${hallName}`.toLowerCase().replace(/\s+/g, "-"),
+        theaterId,
+        theater: theaterId,
+        cinema: theaterId,
+        hall: hallName,
         rows,
         cols: maxCols,
         blockedSeats: String(layoutDraft.blockedSeats)
@@ -515,6 +540,12 @@ export default function AdminSeatLayoutEditorPage() {
           enabled: Boolean(s.enabled)
         }))
       };
+      if (!theaterId) {
+        setLayoutDraft((prev) => ({ ...prev, theaterId: theaters[0]?.id || "" }));
+        throw new Error("theaterId required");
+      }
+      if (!hallName) throw new Error("hall required");
+      console.log("[seat-layout payload]", payload);
       await upsertAdminSeatLayout(payload);
       localStorage.removeItem(draftKey);
       navigate("/admin");
@@ -532,6 +563,18 @@ export default function AdminSeatLayoutEditorPage() {
       <header className="admin-layout-page__head">
         <div>
           <h1>Editor bố trí ghế - {layoutDraft.hall}</h1>
+          <p>Rạp: {theaters.find((t) => t.id === layoutDraft.theaterId)?.name || layoutDraft.theaterId || "--"}</p>
+          <select
+            value={layoutDraft.theaterId}
+            onChange={(e) => setLayoutDraft((p) => ({ ...p, theaterId: e.target.value }))}
+          >
+            <option value="">-- chọn rạp --</option>
+            {theaters.map((theater) => (
+              <option key={theater.id} value={theater.id}>
+                {theater.name}
+              </option>
+            ))}
+          </select>
           <p>Tool-based: chọn, thêm, xóa. Kéo cả cụm ghế với multi-select (Shift+click).</p>
         </div>
         <div className="admin-layout-page__actions">

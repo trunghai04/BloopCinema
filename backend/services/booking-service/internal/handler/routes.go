@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -11,21 +12,25 @@ import (
 
 	"booking-service/internal/catalog"
 	"booking-service/internal/model"
+	"booking-service/internal/order"
 	"booking-service/internal/repository"
 )
 
 type bookingHandler struct {
-	repo    *repository.BookingRepository
-	catalog *catalog.Client
+	repo       *repository.BookingRepository
+	catalog    *catalog.Client
+	orderClient *order.Client
 }
 
 func RegisterRoutes(
 	mux *http.ServeMux,
 	repo *repository.BookingRepository,
+	orderClient *order.Client,
 ) {
 	h := &bookingHandler{
-		repo:    repo,
-		catalog: catalog.NewClient(strings.TrimSpace(os.Getenv("CATALOG_SERVICE_URL"))),
+		repo:        repo,
+		catalog:     catalog.NewClient(strings.TrimSpace(os.Getenv("CATALOG_SERVICE_URL"))),
+		orderClient: orderClient,
 	}
 	mux.HandleFunc("/health", h.health)
 	mux.HandleFunc("/ready", h.ready)
@@ -71,18 +76,57 @@ func (h *bookingHandler) createBooking(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	seatCodes := req.SeatCodes
+	if len(seatCodes) == 0 && strings.TrimSpace(req.SeatCode) != "" {
+		seatCodes = []string{req.SeatCode}
+	}
+	showtime, err := h.catalog.GetShowtime(r.Context(), req.ShowtimeID)
+	if err != nil {
+		http.Error(w, "showtime not found", http.StatusConflict)
+		return
+	}
+	movieTitle := strings.TrimSpace(req.MovieID)
+	showtimeStartAt, _ := catalog.ParseShowtimeStartAt(showtime.StartAt)
+	showtimeLabel := fmt.Sprintf("%s - %s", showtime.Hall, showtimeStartAt.In(time.FixedZone("ICT", 7*3600)).Format("02/01/2006 15:04"))
+	theaterName := ""
+	if theater, terr := h.catalog.GetTheater(r.Context(), showtime.TheaterID); terr == nil && theater != nil {
+		theaterName = strings.TrimSpace(theater.Name)
+	}
+	amountVnd := int64(50000 * len(seatCodes))
+	if layout, err := h.catalog.GetSeatLayoutByHall(r.Context(), showtime.TheaterID, showtime.Hall); err == nil && layout != nil {
+		unitPrice := int64(50000)
+		amountVnd = unitPrice * int64(len(seatCodes))
+	}
 	booking := model.Booking{
 		ID:         "bk-" + time.Now().Format("20060102150405"),
 		UserEmail:  req.UserEmail,
 		MovieID:    req.MovieID,
 		ShowtimeID: req.ShowtimeID,
-		SeatCode:   req.SeatCode,
+		SeatCode:   strings.Join(seatCodes, ","),
+		SeatCodes:  seatCodes,
 		CreatedAt:  time.Now().UTC(),
 	}
 
 	if err := h.repo.Create(r.Context(), booking); err != nil {
 		http.Error(w, "create booking failed", http.StatusInternalServerError)
 		return
+	}
+
+	if h.orderClient != nil {
+		_, _ = h.orderClient.Create(r.Context(), order.CreateOrderRequest{
+			UserEmail:       req.UserEmail,
+			MovieID:         req.MovieID,
+			MovieTitle:      movieTitle,
+			TheaterID:       showtime.TheaterID,
+			TheaterName:     theaterName,
+			ShowtimeID:      req.ShowtimeID,
+			ShowtimeLabel:   showtimeLabel,
+			ShowtimeStartAt: showtime.StartAt,
+			SeatCodes:       seatCodes,
+			TotalAmount:     amountVnd,
+			Currency:        "VND",
+			Status:          "created",
+		})
 	}
 
 	writeJSON(w, http.StatusCreated, booking)

@@ -1,30 +1,217 @@
-# Bloop Cinema - React + Go Microservices
+# Bloop Cinema
 
-Project chia theo 3 phần:
+Bloop Cinema là một hệ thống đặt vé xem phim theo hướng `React + Go microservices`, được thiết kế với tư duy production-first: backend tách domain rõ ràng, có API gateway, hỗ trợ health checks, rate limiting, retry, circuit breaker, logging, và các baseline cho deploy Docker/Kubernetes.
 
-- `frontend`: ReactJS (Vite) với 11 trang web.
-- `backend`: Go microservices (`api-gateway`, `auth-service`,
-  `catalog-service`, `booking-service`).
-- `database`: PostgreSQL với migration khởi tạo bảng booking.
+## Backend architecture
 
-## Architecture (Microservice)
+```text
+Frontend (React + Vite)
+        ↓
+API Gateway
+        ↓
+Auth Service
+User Service
+Catalog Service
+Booking Service
+Seat Inventory Service
+Payment Service
+Notification Service
+        ↓
+Kafka / RabbitMQ
+        ↓
+PostgreSQL riêng cho từng domain + Redis
+```
 
-- `api-gateway` nhận request từ frontend, route sang service phù hợp.
-- `auth-service` xử lý login.
-- `catalog-service` trả dữ liệu phim, thể loại, lịch chiếu.
-- `booking-service` xử lý đặt vé và lưu PostgreSQL.
-- Mỗi domain service có PostgreSQL riêng (`postgres-auth`, `postgres-catalog`, `postgres-booking`).
+Mục tiêu của backend architecture này là:
 
-### Production baseline đã bật
+- tách trách nhiệm theo domain
+- giảm coupling giữa các module
+- dễ scale từng phần độc lập
+- dễ quan sát, debug và vận hành ở môi trường thật
 
-- graceful shutdown cho toàn bộ Go services.
-- `/health` + `/ready` endpoint cho probe.
-- API gateway có request timeout, request-id, JSON access log.
-- API gateway có basic rate limit theo client IP.
-- API gateway có retry cho request idempotent + circuit breaker cho upstream.
-- Docker compose thêm restart policy + healthcheck.
+## Backend services
 
-## 11 Frontend Pages
+### 1. API Gateway
+
+Gateway là entry point cho frontend/mobile app và chịu trách nhiệm:
+
+- routing request tới service phù hợp
+- auth / request forwarding
+- request timeout
+- request-id correlation
+- JSON access log
+- rate limit theo client IP
+- retry cho request idempotent
+- circuit breaker cho upstream
+
+### 2. Auth Service
+
+Service chuyên cho authentication và token management:
+
+- login
+- JWT auth
+- OAuth
+- refresh token
+- verify/rotate token
+
+### 3. User Service
+
+Service riêng để quản lý người dùng và hồ sơ cá nhân:
+
+- đăng ký
+- profile
+- membership
+- điểm thưởng
+- user info
+- account settings
+
+### 4. Catalog Service
+
+Service phụ trách dữ liệu nội dung:
+
+- phim
+- thể loại
+- lịch chiếu
+- thông tin hiển thị cho trang catalog
+
+### 5. Booking Service
+
+Service xử lý luồng đặt vé và lưu trạng thái booking trong PostgreSQL.
+
+Đây là một trong những domain quan trọng nhất của hệ thống vì liên quan đến:
+
+- trạng thái booking
+- concurrency
+- consistency
+- luồng confirm/cancel
+
+### 6. Seat Inventory Service
+
+Service chuyên quản lý trạng thái ghế và cơ chế giữ ghế:
+
+- available
+- reserved
+- booked
+- seat hold timeout
+- distributed lock
+- chống double booking
+
+Đây là domain khó nhất của hệ thống vì phải xử lý concurrent booking ở traffic cao.
+
+### 7. Payment Service
+
+Service riêng để xử lý thanh toán:
+
+- momo / vnpay / stripe
+- payment callback / webhook
+- refund
+- đối soát giao dịch
+- idempotency cho giao dịch thanh toán
+- xử lý webhook duplication
+- eventual consistency / saga compensation
+
+Tách riêng payment giúp hệ thống dễ mở rộng và an toàn hơn khi tích hợp nhiều cổng thanh toán.
+
+### 8. Notification Service
+
+Service dùng cho các tác vụ bất đồng bộ:
+
+- email
+- SMS
+- push notification
+- gửi thông báo đặt vé thành công
+- consume event từ Kafka/RabbitMQ
+
+## Production baseline đã có
+
+Dự án đã bật một số baseline production quan trọng ở backend:
+
+- graceful shutdown cho toàn bộ Go services
+- `/health` và `/ready` cho probe
+- Docker Compose có restart policy và healthcheck
+- API gateway có request timeout và cơ chế bảo vệ upstream
+- có thể mở rộng theo hướng event-driven architecture
+
+## Data layer
+
+Mỗi domain service có PostgreSQL riêng:
+
+- `postgres-user`
+- `postgres-catalog`
+- `postgres-booking`
+- `postgres-payment`
+- Redis cho cache / rate limit / seat hold / distributed lock
+
+Thiết kế này giúp:
+
+- tách dữ liệu theo bounded context
+- tránh một DB trung tâm quá lớn
+- giảm phụ thuộc chéo giữa service
+
+## Event-driven flow
+
+Ví dụ flow backend theo hướng event-driven:
+
+```text
+BookingCreated
+→ SeatReserved
+→ PaymentProcessed
+→ TicketGenerated
+→ NotificationSent
+```
+
+Luồng này giúp:
+
+- giảm coupling giữa các service
+- dễ retry khi một bước thất bại
+- tách tác vụ đồng bộ và bất đồng bộ rõ ràng hơn
+
+## Planned observability stack
+
+- OpenTelemetry
+- Jaeger
+- Prometheus
+- Grafana
+- Loki / ELK
+
+## Hướng phát triển backend tiếp theo
+
+Nếu muốn đưa hệ thống tiến gần hơn production thật, các bước tiếp theo nên là:
+
+- hoàn thiện seat inventory service
+- thêm message broker như Kafka/RabbitMQ
+- thêm Redis cho cache, rate limit, seat hold, distributed lock
+- bổ sung notification service
+- bổ sung tracing bằng OpenTelemetry
+- gom log tập trung bằng ELK hoặc Loki
+- áp dụng saga/idempotency cho payment và booking
+
+## Tư duy thiết kế backend
+
+Hệ thống này không chỉ là CRUD movie booking. Các bài toán cốt lõi là:
+
+- seat locking
+- booking consistency
+- payment consistency
+- concurrent booking
+- observability
+- resiliency
+- scalability
+- distributed system design
+
+Đây là những phần quyết định hệ thống có chạy ổn ở traffic cao hay không.
+
+## Current limitations
+
+- chưa có distributed tracing end-to-end
+- chưa có async event bus hoàn chỉnh
+- chưa xử lý distributed transaction hoàn chỉnh
+- chưa có autoscaling cho toàn bộ domain services
+- chưa có multi-region deployment
+
+## Frontend
+
+Thư mục `frontend` chứa ứng dụng ReactJS (Vite) với 11 trang:
 
 1. Trang chủ
 2. Giới thiệu
@@ -38,13 +225,15 @@ Project chia theo 3 phần:
 10. Liên hệ
 11. Hồ sơ người dùng
 
-## Run nhanh bằng Docker (full stack)
+Frontend được cấu hình để gọi API qua gateway.
+
+## Chạy toàn stack bằng Docker
 
 ```bash
 docker compose up --build
 ```
 
-Các cổng:
+### Các cổng mặc định
 
 - Frontend (Nginx): `http://localhost:5173`
 - Gateway: `http://localhost:8080`
@@ -57,7 +246,7 @@ Các cổng:
 
 Frontend Nginx đã proxy `/api/*` sang gateway.
 
-## Run frontend local (dev mode)
+## Chạy frontend ở local mode
 
 ```bash
 cd frontend
@@ -65,28 +254,37 @@ npm install
 npm run dev
 ```
 
-Frontend gọi API qua `http://localhost:8080`.
+Frontend dev mode sẽ gọi API qua `http://localhost:8080`.
 
 ## Domain production
 
-Domain mục tiêu: `https://cinema.bloop.io.vn`
+Domain mục tiêu:
 
-- Cloudflare DNS:
-  - Type: `A`
-  - Name: `cinema`
-  - Content: `<public-ip-server>`
-- Gateway CORS đã cho phép:
-  - `https://cinema.bloop.io.vn`
-  - `http://localhost:5173`
+- `https://cinema.bloop.io.vn`
+
+### DNS
+
+Cấu hình Cloudflare:
+
+- Type: `A`
+- Name: `cinema`
+- Content: `<public-ip-server>`
+
+### CORS
+
+Gateway đã cho phép:
+
+- `https://cinema.bloop.io.vn`
+- `http://localhost:5173`
 
 ## Deploy Nginx + SSL nhanh
 
-Đã có sẵn:
+Đã chuẩn bị sẵn:
 
 - `deploy/nginx/cinema.bloop.io.vn.conf`
 - `deploy/scripts/deploy-cinema-ssl.sh`
 
-Server Ubuntu chạy nhanh:
+### Cách chạy trên Ubuntu server
 
 ```bash
 sudo mkdir -p /opt
@@ -97,14 +295,14 @@ sudo bash deploy/scripts/deploy-cinema-ssl.sh admin@bloop.io.vn
 
 Script sẽ:
 
-- install `nginx + certbot`
+- cài `nginx` và `certbot`
 - bật site `cinema.bloop.io.vn`
 - xin SSL Let's Encrypt
 - reload nginx
 
-## Production deploy bằng Kubernetes
+## Deploy production bằng Kubernetes
 
-Manifest nằm ở `deploy/k8s`:
+Manifest nằm trong `deploy/k8s` và bao gồm:
 
 - namespace + configmap
 - 3 PostgreSQL deployment/service tách riêng cho auth, catalog, booking
@@ -115,14 +313,16 @@ Manifest nằm ở `deploy/k8s`:
 - network policy
 - kustomization để apply nhanh
 
-Apply:
+### Apply
 
 ```bash
 kubectl apply -k deploy/k8s
 ```
 
-Lưu ý:
+### Lưu ý trước khi deploy
 
-- image đang để placeholder `ghcr.io/your-org/...`
-- cần cập nhật `deploy/k8s/app-secrets.yaml` (3 DATABASE_URL + `JWT_SECRET`) trước khi apply
-- domain CORS production cấu hình ở `deploy/k8s/configmap.yaml`
+- image hiện đang để placeholder `ghcr.io/your-org/...`
+- cần cập nhật `deploy/k8s/app-secrets.yaml` với:
+  - 3 `DATABASE_URL`
+  - `JWT_SECRET`
+- cấu hình CORS production nằm ở `deploy/k8s/configmap.yaml`
