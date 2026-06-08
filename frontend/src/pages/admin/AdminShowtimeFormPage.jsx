@@ -54,7 +54,8 @@ export default function AdminShowtimeFormPage() {
         setLayouts(lts || []);
         setTheaters(ths || []);
         if (!isEdit) {
-          setDraft({ ...EMPTY_SHOWTIME });
+          const generatedId = "st" + Date.now().toString().slice(-5) + Math.floor(Math.random() * 10);
+          setDraft({ ...EMPTY_SHOWTIME, id: generatedId });
           return;
         }
         const found = (sts || []).find((s) => s.id === showtimeId);
@@ -171,10 +172,10 @@ export default function AdminShowtimeFormPage() {
         <form className="item-card admin-form admin-panel admin-showtime-form" onSubmit={submit}>
           <h2>Thông tin suất</h2>
           <input
-            placeholder="showtime id (vd: st200)"
             value={draft.id}
-            disabled={isEdit}
-            onChange={(e) => setDraft((p) => ({ ...p, id: e.target.value }))}
+            disabled
+            title="Mã suất chiếu được tạo tự động bởi hệ thống"
+            style={{ opacity: 0.6, cursor: "not-allowed" }}
           />
           <select value={draft.movieId} onChange={(e) => setDraft((p) => ({ ...p, movieId: e.target.value }))}>
             <option value="">-- chọn phim --</option>

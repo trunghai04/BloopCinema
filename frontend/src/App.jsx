@@ -29,6 +29,7 @@ import {
   AdminPage,
   AdminSeatLayoutEditorPage,
   AdminShowtimeFormPage,
+  AdminLoginPage,
 } from "./pages/admin";
 import { useAuth } from "./context/AuthContext";
 import RouteTitleSync from "./components/RouteTitleSync";
@@ -191,6 +192,9 @@ function BetaMainNav() {
 }
 
 export default function App() {
+  const { user, isLoggedIn } = useAuth();
+  const isAdmin = isLoggedIn && user?.role === "admin";
+
   const host = typeof window !== "undefined" ? window.location.hostname : "";
   const path = typeof window !== "undefined" ? window.location.pathname : "";
   const isAdminHost =
@@ -199,44 +203,53 @@ export default function App() {
     path.startsWith("/admin");
 
   if (isAdminHost) {
-    return (
-      <div className="app-shell">
-        <RouteTitleSync />
-        <main className="page-card">
+    if (!isAdmin) {
+      return (
+        <div className="admin-app-shell">
+          <RouteTitleSync />
           <Routes>
-            <Route path="/" element={<AdminPage />} />
-            <Route path="/movies/new" element={<AdminMovieFormPage />} />
-            <Route path="/movies/:movieId" element={<AdminMovieFormPage />} />
-            <Route path="/showtimes/new" element={<AdminShowtimeFormPage />} />
-            <Route
-              path="/showtimes/:showtimeId"
-              element={<AdminShowtimeFormPage />}
-            />
-            <Route
-              path="/layouts/:hall"
-              element={<AdminSeatLayoutEditorPage />}
-            />
-            <Route path="/admin" element={<AdminPage />} />
-            <Route path="/admin/movies/new" element={<AdminMovieFormPage />} />
-            <Route
-              path="/admin/movies/:movieId"
-              element={<AdminMovieFormPage />}
-            />
-            <Route
-              path="/admin/showtimes/new"
-              element={<AdminShowtimeFormPage />}
-            />
-            <Route
-              path="/admin/showtimes/:showtimeId"
-              element={<AdminShowtimeFormPage />}
-            />
-            <Route
-              path="/admin/layouts/:hall"
-              element={<AdminSeatLayoutEditorPage />}
-            />
-            <Route path="*" element={<AdminPage />} />
+            <Route path="*" element={<AdminLoginPage />} />
           </Routes>
-        </main>
+        </div>
+      );
+    }
+
+    return (
+      <div className="admin-app-shell">
+        <RouteTitleSync />
+        <Routes>
+          <Route path="/" element={<AdminPage />} />
+          <Route path="/movies/new" element={<AdminMovieFormPage />} />
+          <Route path="/movies/:movieId" element={<AdminMovieFormPage />} />
+          <Route path="/showtimes/new" element={<AdminShowtimeFormPage />} />
+          <Route
+            path="/showtimes/:showtimeId"
+            element={<AdminShowtimeFormPage />}
+          />
+          <Route
+            path="/layouts/:hall"
+            element={<AdminSeatLayoutEditorPage />}
+          />
+          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/admin/movies/new" element={<AdminMovieFormPage />} />
+          <Route
+            path="/admin/movies/:movieId"
+            element={<AdminMovieFormPage />}
+          />
+          <Route
+            path="/admin/showtimes/new"
+            element={<AdminShowtimeFormPage />}
+          />
+          <Route
+            path="/admin/showtimes/:showtimeId"
+            element={<AdminShowtimeFormPage />}
+          />
+          <Route
+            path="/admin/layouts/:hall"
+            element={<AdminSeatLayoutEditorPage />}
+          />
+          <Route path="*" element={<AdminPage />} />
+        </Routes>
       </div>
     );
   }

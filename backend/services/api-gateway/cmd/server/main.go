@@ -110,6 +110,7 @@ func main() {
 	proxyTransport := resilience.transport(baseTransport, logger)
 
 	proxies := []routeProxy{
+		{pathPrefix: "/api/v1/auth/admin-login", targetURL: authURL},
 		{pathPrefix: "/api/v1/auth/login", targetURL: userURL},
 		{pathPrefix: "/api/v1/auth/register", targetURL: userURL},
 		{pathPrefix: "/api/v1/auth", targetURL: authURL},

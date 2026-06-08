@@ -225,6 +225,15 @@ export async function login(email, password) {
   return parseJson(response);
 }
 
+export async function adminLogin(email, password) {
+  const response = await apiFetch("/api/v1/auth/admin-login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password })
+  });
+  return parseJson(response);
+}
+
 export async function registerUser({ name, email, password }) {
   const response = await apiFetch("/api/v1/auth/register", {
     method: "POST",

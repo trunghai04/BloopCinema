@@ -4,6 +4,14 @@ const STORAGE_KEY = "cinemaAuth";
 
 const AuthContext = createContext(null);
 
+function parseJwt(token) {
+  try {
+    return JSON.parse(atob(token.split(".")[1]));
+  } catch (e) {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
 
@@ -17,7 +25,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   const login = (email, token, profile = {}) => {
-    const u = { email, token, ...profile };
+    const decoded = parseJwt(token) || {};
+    const u = { email, token, role: decoded.role || "user", ...profile };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(u));
     setUser(u);
   };

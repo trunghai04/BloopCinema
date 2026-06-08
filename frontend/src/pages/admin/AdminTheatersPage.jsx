@@ -49,32 +49,59 @@ export default function AdminTheatersPage({ onCreated }) {
   }
 
   return (
-    <div className="admin-horizontal-section">
-      <form className="item-card admin-form admin-panel admin-horizontal-card" onSubmit={submit}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1.5fr", gap: 24, alignItems: "start" }}>
+      {/* Form block */}
+      <div className="admin-glass-panel">
         <h2>Quản lý rạp</h2>
-        <input placeholder="id" value={draft.id} onChange={(e) => setDraft((p) => ({ ...p, id: e.target.value }))} />
-        <input placeholder="Tên rạp" value={draft.name} onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))} />
-        <input placeholder="Thành phố" value={draft.city} onChange={(e) => setDraft((p) => ({ ...p, city: e.target.value }))} />
-        <input placeholder="Mã code" value={draft.code} onChange={(e) => setDraft((p) => ({ ...p, code: e.target.value }))} />
-        <button type="submit">Lưu rạp</button>
-      </form>
+        <form className="admin-glass-form" onSubmit={submit}>
+          <label>
+            <span>Mã Rạp (id)</span>
+            <input placeholder="ví dụ: hanoi" value={draft.id} onChange={(e) => setDraft((p) => ({ ...p, id: e.target.value }))} />
+          </label>
+          <label>
+            <span>Tên rạp</span>
+            <input placeholder="Tên rạp" value={draft.name} onChange={(e) => setDraft((p) => ({ ...p, name: e.target.value }))} />
+          </label>
+          <label>
+            <span>Thành phố</span>
+            <input placeholder="Thành phố" value={draft.city} onChange={(e) => setDraft((p) => ({ ...p, city: e.target.value }))} />
+          </label>
+          <label>
+            <span>Mã code rạp</span>
+            <input placeholder="Mã code" value={draft.code} onChange={(e) => setDraft((p) => ({ ...p, code: e.target.value }))} />
+          </label>
+          <button type="submit" className="admin-login-submit">Lưu rạp</button>
+        </form>
+      </div>
 
-      <div className="item-card admin-list admin-panel admin-horizontal-card">
+      {/* List block */}
+      <div className="admin-glass-panel">
         <h2>Danh sách rạp</h2>
-        {error ? <p className="book-error">{error}</p> : null}
-        <div className="admin-horizontal-items">
-          {items.map((item) => (
-            <div key={item.id} className="admin-row admin-row--horizontal">
-              <div className="admin-row__main">
-                <strong>{item.name}</strong>
-                <span>{item.id} · {item.city || ""} · {item.code || ""}</span>
-              </div>
-              <div className="admin-row__actions">
-                <button type="button" className="btn-secondary" onClick={() => setDraft(item)}>Sửa</button>
-                <button type="button" className="btn-secondary" onClick={() => remove(item.id)}>Xóa</button>
-              </div>
-            </div>
-          ))}
+        {error ? <p className="book-error" style={{ background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.2)", color: "#fca5a5", padding: "12px 14px", borderRadius: "12px", fontSize: "13px" }}>{error}</p> : null}
+        <div className="admin-table-container">
+          <table className="admin-data-table">
+            <thead>
+              <tr>
+                <th>Tên rạp</th>
+                <th>Thông tin</th>
+                <th style={{ textAlign: "right" }}>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((item) => (
+                <tr key={item.id}>
+                  <td><strong>{item.name}</strong></td>
+                  <td><code>{item.id}</code> · {item.city || ""} · {item.code || ""}</td>
+                  <td style={{ textAlign: "right" }}>
+                    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                      <button type="button" className="btn-secondary" onClick={() => setDraft(item)}>Sửa</button>
+                      <button type="button" className="btn-secondary" onClick={() => remove(item.id)}>Xóa</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

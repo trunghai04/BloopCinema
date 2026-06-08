@@ -61,7 +61,8 @@ export default function AdminMovieFormPage() {
       .then((movies) => {
         if (cancelled) return;
         if (!isEdit) {
-          setMovieDraft({ ...EMPTY_MOVIE });
+          const generatedId = "mv" + Date.now().toString().slice(-5) + Math.floor(Math.random() * 10);
+          setMovieDraft({ ...EMPTY_MOVIE, id: generatedId });
           return;
         }
         const found = (movies || []).find((m) => m.id === movieId);
@@ -140,11 +141,10 @@ export default function AdminMovieFormPage() {
           <h2>Thông tin phim</h2>
           <input
             name="movieId"
-            autoComplete="off"
-            placeholder="movie id (vd: mv100)"
             value={movieDraft.id}
-            disabled={isEdit}
-            onChange={(e) => setMovieDraft((p) => ({ ...p, id: e.target.value }))}
+            disabled
+            title="ID phim được tạo tự động bởi hệ thống"
+            style={{ opacity: 0.6, cursor: "not-allowed" }}
           />
           <input
             name="movieTitle"
