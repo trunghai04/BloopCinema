@@ -684,7 +684,7 @@ export default function AdminPage() {
               <button
                 type="button"
                 className="btn-secondary"
-                onClick={() => navigate(`/layouts/${encodeURIComponent(layoutDraft.hall)}`)}
+                onClick={() => navigate(`/admin/layouts/${encodeURIComponent(layoutDraft.hall)}`)}
               >
                 Mở editor riêng
               </button>
@@ -756,7 +756,7 @@ export default function AdminPage() {
                     <button
                       type="button"
                       className="btn-secondary"
-                      onClick={() => navigate(`/layouts/${encodeURIComponent(l.hall)}`)}
+                      onClick={() => navigate(`/admin/layouts/${encodeURIComponent(l.hall)}`)}
                     >
                       Chỉnh sửa canvas
                     </button>

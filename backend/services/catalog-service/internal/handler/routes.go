@@ -80,7 +80,7 @@ type SeatNode struct {
 	X       int    `json:"x"`
 	Y       int    `json:"y"`
 	Type    string `json:"type,omitempty"`
-	Enabled bool   `json:"enabled"`
+	Enabled *bool  `json:"enabled,omitempty"`
 }
 
 var movies = []Movie{
@@ -732,16 +732,16 @@ func normalizeSeatNodes(seats []SeatNode) []SeatNode {
 		if typ == "" {
 			typ = "standard"
 		}
-		enabled := s.Enabled
-		if !s.Enabled {
-			enabled = true
+		enabled := true
+		if s.Enabled != nil {
+			enabled = *s.Enabled
 		}
 		out = append(out, SeatNode{
 			Code:    code,
 			X:       s.X,
 			Y:       s.Y,
 			Type:    typ,
-			Enabled: enabled,
+			Enabled: &enabled,
 		})
 	}
 	return out

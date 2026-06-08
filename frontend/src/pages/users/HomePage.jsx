@@ -45,7 +45,7 @@ function loadStoredBanners() {
   return DEFAULT_HERO_BANNERS;
 }
 
-const BANNER_ASSET_BASE = API_BASE || "http://localhost:8082";
+const BANNER_ASSET_BASE = API_BASE;
 
 function normalizeBanner(item) {
   const image = item?.imageUrl || item?.image || "/news-carousel-1.jpg";
@@ -104,12 +104,13 @@ export default function HomePage() {
   const heroMovies = nowMovies.length ? nowMovies.slice(0, 6) : movies.slice(0, 6);
 
   useEffect(() => {
-    if (heroMovies.length <= 1) return undefined;
+    const count = heroBanners.length || 1;
+    if (count <= 1) return undefined;
     const timer = setInterval(() => {
-      setHeroIndex((prev) => (prev + 1) % heroMovies.length);
+      setHeroIndex((prev) => (prev + 1) % count);
     }, 4000);
     return () => clearInterval(timer);
-  }, [heroMovies.length]);
+  }, [heroBanners.length]);
 
   useEffect(() => {
     let mounted = true;

@@ -102,8 +102,35 @@ export default function AdminShowtimeFormPage() {
   async function submit(e) {
     e.preventDefault();
     setError("");
+
+    // Client-side friendly validation
+    if (!String(draft.id || "").trim()) {
+      setError("Vui lòng điền mã suất chiếu (ví dụ: st100).");
+      return;
+    }
+    if (!draft.movieId) {
+      setError("Vui lòng chọn phim.");
+      return;
+    }
+    if (!draft.theaterId) {
+      setError("Vui lòng chọn rạp.");
+      return;
+    }
+    if (!draft.hall) {
+      setError("Vui lòng chọn phòng chiếu (hall).");
+      return;
+    }
+    if (!draft.startAt) {
+      setError("Vui lòng chọn ngày và giờ chiếu.");
+      return;
+    }
+
     try {
       const normalizedStartAt = toUtcIsoFromDatetimeLocal(draft.startAt);
+      if (!normalizedStartAt) {
+        setError("Thời gian chiếu không hợp lệ.");
+        return;
+      }
       const payload = {
         ...draft,
         startAt: normalizedStartAt,

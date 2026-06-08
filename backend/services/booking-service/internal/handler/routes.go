@@ -86,6 +86,9 @@ func (h *bookingHandler) createBooking(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	movieTitle := strings.TrimSpace(req.MovieID)
+	if movie, merr := h.catalog.GetMovie(r.Context(), req.MovieID); merr == nil && movie != nil {
+		movieTitle = movie.Title
+	}
 	showtimeStartAt, _ := catalog.ParseShowtimeStartAt(showtime.StartAt)
 	showtimeLabel := fmt.Sprintf("%s - %s", showtime.Hall, showtimeStartAt.In(time.FixedZone("ICT", 7*3600)).Format("02/01/2006 15:04"))
 	theaterName := ""

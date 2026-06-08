@@ -4,7 +4,8 @@ import {
   ApiError,
   createStripeCheckoutSession,
   getReservationDetail,
-  getStripePaymentStatus
+  getStripePaymentStatus,
+  payReservation
 } from "../../api/client";
 
 export default function PaymentPage() {
@@ -106,16 +107,11 @@ export default function PaymentPage() {
     setPayError("");
     try {
       if (success) {
-        const base = window.location.origin;
-        const out = await createStripeCheckoutSession({
-          holdId,
-          successUrl: `${base}/book/payment/return?session_id={CHECKOUT_SESSION_ID}`,
-          cancelUrl: `${base}/book/payment?holdId=${encodeURIComponent(holdId)}`
+        await payReservation({ holdId, success: true });
+        navigate(`/book/ticket?holdId=${encodeURIComponent(holdId)}`, {
+          replace: true
         });
-        if (out?.url) {
-          window.location.assign(out.url);
-          return;
-        }
+        return;
       }
       setPayError(
         "Thanh toán thất bại (demo). Ghế vẫn bị giữ trong thời gian còn lại của phiên, sau đó hệ thống nhả ghế."

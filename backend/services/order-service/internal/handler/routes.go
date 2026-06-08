@@ -84,22 +84,31 @@ func (h *Handler) orders(w http.ResponseWriter, r *http.Request) {
 		if amount == 0 {
 			amount = req.TotalAmount
 		}
+		var startAtPtr *time.Time
+		if strings.TrimSpace(req.ShowtimeStartAt) != "" {
+			if t, err := time.Parse(time.RFC3339, req.ShowtimeStartAt); err == nil {
+				startAtPtr = &t
+			} else if t, err = time.Parse(time.RFC3339Nano, req.ShowtimeStartAt); err == nil {
+				startAtPtr = &t
+			}
+		}
 		order := repository.Order{
-			ID:            req.ID,
-			UserID:        req.UserID,
-			UserEmail:     req.UserEmail,
-			MovieID:       req.MovieID,
-			MovieTitle:    req.MovieTitle,
-			TheaterID:     req.TheaterID,
-			TheaterName:   req.TheaterName,
-			ShowtimeID:    req.ShowtimeID,
-			ShowtimeLabel: req.ShowtimeLabel,
-			SeatCode:      req.SeatCode,
-			SeatCodes:     req.SeatCodes,
-			AmountVND:     amount,
-			Status:        status,
-			CreatedAt:     now,
-			UpdatedAt:     now,
+			ID:              req.ID,
+			UserID:          req.UserID,
+			UserEmail:       req.UserEmail,
+			MovieID:         req.MovieID,
+			MovieTitle:      req.MovieTitle,
+			TheaterID:       req.TheaterID,
+			TheaterName:     req.TheaterName,
+			ShowtimeID:      req.ShowtimeID,
+			ShowtimeLabel:   req.ShowtimeLabel,
+			ShowtimeStartAt: startAtPtr,
+			SeatCode:        req.SeatCode,
+			SeatCodes:       req.SeatCodes,
+			AmountVND:       amount,
+			Status:          status,
+			CreatedAt:       now,
+			UpdatedAt:       now,
 		}
 		if err := h.repo.Create(r.Context(), order); err != nil {
 			if strings.Contains(strings.ToLower(err.Error()), "duplicate key") {

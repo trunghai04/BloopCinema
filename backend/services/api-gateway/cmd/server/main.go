@@ -82,7 +82,7 @@ func main() {
 		),
 	)
 	_ = userURL
-	requestTimeout := getEnvDuration("REQUEST_TIMEOUT", 8*time.Second)
+	_ = getEnvDuration("REQUEST_TIMEOUT", 8*time.Second)
 	shutdownTimeout := getEnvDuration("SHUTDOWN_TIMEOUT", 10*time.Second)
 	upstreamRetryCount := getEnvInt("UPSTREAM_RETRY_COUNT", 2)
 	upstreamRetryBackoff := getEnvDuration("UPSTREAM_RETRY_BACKOFF", 120*time.Millisecond)
@@ -122,6 +122,7 @@ func main() {
 		{pathPrefix: "/api/v1/bookings", targetURL: bookingURL},
 		{pathPrefix: "/api/v1/reservations", targetURL: bookingURL},
 		{pathPrefix: "/api/v1/orders", targetURL: orderURL},
+		{pathPrefix: "/uploads", targetURL: catalogURL},
 		{pathPrefix: "/health/auth", targetURL: authURL},
 		{pathPrefix: "/health/users", targetURL: userURL},
 		{pathPrefix: "/health/catalog", targetURL: catalogURL},
@@ -160,7 +161,6 @@ func main() {
 		withRequestID,
 		withAccessLog(logger),
 		withRateLimit(limiter),
-		withTimeout(requestTimeout),
 	)
 
 	server := &http.Server{
@@ -544,17 +544,8 @@ func (u *upstreamResilience) transport(base http.RoundTripper, logger *slog.Logg
 		var lastErr error
 		for attempt := 1; attempt <= attempts; attempt++ {
 			attemptReq := req.Clone(req.Context())
-			var cancel context.CancelFunc
-			if u.perTryTimeout > 0 {
-				ctx, c := context.WithTimeout(req.Context(), u.perTryTimeout)
-				cancel = c
-				attemptReq = req.Clone(ctx)
-			}
 
 			resp, err := base.RoundTrip(attemptReq)
-			if cancel != nil {
-				cancel()
-			}
 			if err == nil && !shouldRetryStatus(resp.StatusCode) {
 				u.markSuccess(host)
 				return resp, nil
