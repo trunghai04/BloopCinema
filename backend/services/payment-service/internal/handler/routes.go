@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -50,8 +52,9 @@ func ready(w http.ResponseWriter, _ *http.Request) {
 }
 
 func status(w http.ResponseWriter, _ *http.Request) {
+	key := strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY"))
 	writeJSON(w, http.StatusOK, map[string]any{
-		"stripeConfigured": strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY")) != "",
+		"stripeConfigured":         key != "" && key != "mock",
 		"bookingServiceConfigured": strings.TrimSpace(os.Getenv("BOOKING_SERVICE_URL")) != "",
 	})
 }
@@ -70,19 +73,59 @@ func checkoutSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "holdId, successUrl, cancelUrl required", http.StatusBadRequest)
 		return
 	}
-	if strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY")) == "" {
-		http.Error(w, "STRIPE_SECRET_KEY is required", http.StatusFailedDependency)
-		return
+
+	secretKey := strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY"))
+	var sessionID string
+	var redirectURL string
+
+	if secretKey != "" && secretKey != "mock" {
+		bookingURL := strings.TrimRight(strings.TrimSpace(os.Getenv("BOOKING_SERVICE_URL")), "/")
+		qty := int64(1)
+		pricePerSeat := int64(90000)
+
+		pricePerSeatStr := os.Getenv("TICKET_PRICE_PER_SEAT_VND")
+		if pricePerSeatStr != "" {
+			if val, err := strconv.ParseInt(pricePerSeatStr, 10, 64); err == nil && val > 0 {
+				pricePerSeat = val
+			}
+		}
+
+		if detail, err := fetchHoldDetail(bookingURL, req.HoldID); err == nil {
+			if raw, ok := detail["seatCodes"].(string); ok && strings.TrimSpace(raw) != "" {
+				parts := strings.Split(raw, ",")
+				n := int64(0)
+				for _, p := range parts {
+					if strings.TrimSpace(p) != "" {
+						n++
+					}
+				}
+				if n > 0 {
+					qty = n
+				}
+			}
+		}
+
+		successURLWithSession := strings.ReplaceAll(req.SuccessURL, "{CHECKOUT_SESSION_ID}", "{CHECKOUT_SESSION_ID}")
+		sessID, sessURL, err := createStripeSession(secretKey, req.HoldID, qty, pricePerSeat, successURLWithSession, req.CancelURL)
+		if err != nil {
+			http.Error(w, "Failed to create Stripe Session: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		sessionID = sessID
+		redirectURL = sessURL
+	} else {
+		sessionID = fmt.Sprintf("cs_test_mock_%s_%d", req.HoldID, time.Now().UnixNano())
+		redirectURL = strings.ReplaceAll(req.SuccessURL, "{CHECKOUT_SESSION_ID}", sessionID)
 	}
-	sessionID := fmt.Sprintf("cs_test_%s_%d", req.HoldID, time.Now().UnixNano())
+
 	checkoutMu.Lock()
 	checkoutSessions[sessionID] = checkoutSessionInfo{HoldID: req.HoldID}
 	checkoutMu.Unlock()
+
 	if err := ensurePendingOrder(req.HoldID, sessionID); err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"error": err.Error()})
 		return
 	}
-	redirectURL := strings.ReplaceAll(req.SuccessURL, "{CHECKOUT_SESSION_ID}", sessionID)
 	writeJSON(w, http.StatusOK, map[string]string{"url": redirectURL})
 }
 
@@ -100,17 +143,32 @@ func confirm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "sessionId required", http.StatusBadRequest)
 		return
 	}
-	checkoutMu.Lock()
-	info, ok := checkoutSessions[req.SessionID]
-	checkoutMu.Unlock()
-	holdID := info.HoldID
-	if !ok || strings.TrimSpace(holdID) == "" {
-		holdID = parseHoldIDFromSession(req.SessionID)
+
+	secretKey := strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY"))
+	var holdID string
+	var err error
+
+	if secretKey != "" && secretKey != "mock" && !strings.HasPrefix(req.SessionID, "cs_test_mock_") {
+		holdID, err = verifyStripeSession(secretKey, req.SessionID)
+		if err != nil {
+			http.Error(w, "Failed to verify Stripe Session: "+err.Error(), http.StatusBadRequest)
+			return
+		}
+	} else {
+		checkoutMu.Lock()
+		info, ok := checkoutSessions[req.SessionID]
+		checkoutMu.Unlock()
+		holdID = info.HoldID
+		if !ok || strings.TrimSpace(holdID) == "" {
+			holdID = parseHoldIDFromSession(req.SessionID)
+		}
 	}
+
 	if strings.TrimSpace(holdID) == "" {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
+
 	if err := notifyBookingService(holdID, true); err != nil {
 		writeJSON(w, http.StatusBadGateway, map[string]any{"sessionId": req.SessionID, "status": "paid", "bookingSync": "failed", "error": err.Error()})
 		return
@@ -291,8 +349,98 @@ func notifyOrderService(sessionID, holdID, status string) error {
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
+	w.Header().Set("Content-Type", "application/x-www-form-urlencoded") // will be overwritten by writeJSON
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func createStripeSession(secretKey string, holdID string, qty int64, unitAmount int64, successURL, cancelURL string) (string, string, error) {
+	apiURL := "https://api.stripe.com/v1/checkout/sessions"
+	data := url.Values{}
+	data.Set("mode", "payment")
+	data.Set("success_url", successURL)
+	data.Set("cancel_url", cancelURL)
+	data.Set("metadata[hold_id]", holdID)
+	data.Set("line_items[0][price_data][currency]", "vnd")
+	data.Set("line_items[0][price_data][unit_amount]", strconv.FormatInt(unitAmount, 10))
+	data.Set("line_items[0][price_data][product_data][name]", "Vé xem phim · Bloop Cinema")
+	data.Set("line_items[0][quantity]", strconv.FormatInt(qty, 10))
+
+	req, err := http.NewRequest(http.MethodPost, apiURL, strings.NewReader(data.Encode()))
+	if err != nil {
+		return "", "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+secretKey)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return "", "", fmt.Errorf("stripe api error (status %d): %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var stripeSess struct {
+		ID  string `json:"id"`
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(bodyBytes, &stripeSess); err != nil {
+		return "", "", err
+	}
+	if stripeSess.URL == "" {
+		return "", "", fmt.Errorf("empty url returned from stripe")
+	}
+	return stripeSess.ID, stripeSess.URL, nil
+}
+
+func verifyStripeSession(secretKey string, sessionID string) (string, error) {
+	if strings.HasPrefix(sessionID, "cs_test_mock_") {
+		parts := strings.Split(sessionID, "_")
+		if len(parts) >= 5 {
+			return strings.Join(parts[3:len(parts)-1], "_"), nil
+		}
+		return "", fmt.Errorf("invalid mock session id")
+	}
+
+	apiURL := "https://api.stripe.com/v1/checkout/sessions/" + sessionID
+	req, err := http.NewRequest(http.MethodGet, apiURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+secretKey)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 300 {
+		return "", fmt.Errorf("stripe api error (status %d): %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var stripeSess struct {
+		PaymentStatus string            `json:"payment_status"`
+		Metadata      map[string]string `json:"metadata"`
+	}
+	if err := json.Unmarshal(bodyBytes, &stripeSess); err != nil {
+		return "", err
+	}
+
+	if stripeSess.PaymentStatus != "paid" {
+		return "", fmt.Errorf("checkout session status is not paid: %s", stripeSess.PaymentStatus)
+	}
+
+	holdID := stripeSess.Metadata["hold_id"]
+	if strings.TrimSpace(holdID) == "" {
+		return "", fmt.Errorf("missing hold_id in stripe session metadata")
+	}
+	return holdID, nil
 }
 

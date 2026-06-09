@@ -100,6 +100,13 @@ export default function HomePage() {
 
   const nowMovies = useMemo(() => movies.filter((movie) => !isFuturePremiere(movie)), [movies]);
   const upcomingMovies = useMemo(() => movies.filter((movie) => isFuturePremiere(movie)), [movies]);
+  const specialMovies = useMemo(() => {
+    return movies.filter((movie) => {
+      const isUpcoming = isFuturePremiere(movie);
+      const hasShowtimes = (showtimesByMovieId.get(movie.id) || []).length > 0;
+      return isUpcoming && hasShowtimes;
+    });
+  }, [movies, showtimesByMovieId]);
   const featured = nowMovies.slice(0, 4);
   const heroMovies = nowMovies.length ? nowMovies.slice(0, 6) : movies.slice(0, 6);
 
@@ -211,9 +218,30 @@ export default function HomePage() {
           </p>
         </>
       ) : (
-        <p className="section-muted" style={{ textAlign: "center", padding: "32px 0" }}>
-          Ưu đãi suất đặc biệt xem tại mục khuyến mãi.
-        </p>
+        <>
+          <div className="movie-grid-beta">
+            {specialMovies.slice(0, 4).map((movie, idx) => (
+              <MovieCardBeta
+                key={movie.id}
+                movie={movie}
+                showHot={idx === 0}
+                showBuyButton={(showtimesByMovieId.get(movie.id) || []).length > 0}
+                statusLabel="Suất chiếu sớm"
+              />
+            ))}
+          </div>
+          {specialMovies.length > 0 ? (
+            <p style={{ textAlign: "center", marginTop: 24 }}>
+              <Link to="/movies?tab=special" className="cta-link">
+                Xem tất cả suất chiếu đặc biệt →
+              </Link>
+            </p>
+          ) : (
+            <p className="section-muted" style={{ textAlign: "center", padding: "32px 0" }}>
+              Hiện chưa có suất chiếu đặc biệt nào.
+            </p>
+          )}
+        </>
       )}
     </section>
   );

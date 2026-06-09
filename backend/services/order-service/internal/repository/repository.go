@@ -102,7 +102,16 @@ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
 	return err
 }
 
+func (r *Repository) expirePending(ctx context.Context) {
+	_, _ = r.db.ExecContext(ctx, `
+		UPDATE orders
+		SET status = 'failed', updated_at = NOW()
+		WHERE status = 'pending' AND created_at < NOW() - INTERVAL '5 minutes'
+	`)
+}
+
 func (r *Repository) ListByUser(ctx context.Context, userID string) ([]Order, error) {
+	r.expirePending(ctx)
 	rows, err := r.db.QueryContext(ctx, `
 SELECT id, user_id, user_email, movie_id, movie_title, theater_id, theater_name, showtime_id, showtime_label, showtime_start_at, seat_code, seat_codes, amount_vnd, status, created_at, updated_at
 FROM orders
@@ -117,6 +126,7 @@ ORDER BY created_at DESC
 }
 
 func (r *Repository) ListAll(ctx context.Context) ([]Order, error) {
+	r.expirePending(ctx)
 	rows, err := r.db.QueryContext(ctx, `
 SELECT id, user_id, user_email, movie_id, movie_title, theater_id, theater_name, showtime_id, showtime_label, showtime_start_at, seat_code, seat_codes, amount_vnd, status, created_at, updated_at
 FROM orders
@@ -142,6 +152,7 @@ func scanOrders(rows *sql.Rows) ([]Order, error) {
 }
 
 func (r *Repository) Get(ctx context.Context, id string) (Order, error) {
+	r.expirePending(ctx)
 	var o Order
 	err := r.db.QueryRowContext(ctx, `
 SELECT id, user_id, user_email, movie_id, movie_title, theater_id, theater_name, showtime_id, showtime_label, showtime_start_at, seat_code, seat_codes, amount_vnd, status, created_at, updated_at

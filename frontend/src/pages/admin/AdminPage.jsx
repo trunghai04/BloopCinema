@@ -18,6 +18,7 @@ import { setDocumentTitle } from "../../utils/documentTitle";
 import gheThuongImg from "../../assets/ghethuong.webp";
 import gheVipImg from "../../assets/ghevip.webp";
 import gheDoiImg from "../../assets/ghedoi.webp";
+import logo from "../../assets/logo_rounded.png";
 
 function makeColNumbers(n) {
   const max = Number(n) > 0 ? Number(n) : 10;
@@ -112,7 +113,7 @@ export default function AdminPage() {
   const [showtimesError, setShowtimesError] = useState("");
   const [layoutsError, setLayoutsError] = useState("");
   const [error, setError] = useState("");
-  const [activeTab, setActiveTab] = useState("movies");
+  const [activeTab, setActiveTab] = useState("overview");
 
   const [layoutDraft, setLayoutDraft] = useState({
     theaterId: "hanoi",
@@ -416,6 +417,7 @@ export default function AdminPage() {
     const seatType = String(type || "standard").toLowerCase();
     if (seatType === "vip") return gheVipImg;
     if (seatType === "couple") return gheDoiImg;
+    if (seatType === "aisle") return null;
     return gheThuongImg;
   }
 
@@ -464,26 +466,12 @@ export default function AdminPage() {
       <aside className="admin-sidebar">
         <div className="admin-sidebar__brand">
           <h2>
-            <svg
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{ color: "#60a5fa" }}
-            >
-              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
-              <line x1="7" y1="2" x2="7" y2="22"></line>
-              <line x1="17" y1="2" x2="17" y2="22"></line>
-              <line x1="2" y1="12" x2="22" y2="12"></line>
-              <line x1="2" y1="7" x2="7" y2="7"></line>
-              <line x1="2" y1="17" x2="7" y2="17"></line>
-              <line x1="17" y1="17" x2="22" y2="17"></line>
-              <line x1="17" y1="7" x2="22" y2="7"></line>
-            </svg>
+            <img 
+              src={logo} 
+              alt="Bloop Cinema" 
+              className="admin-brand-logo" 
+              style={{ width: "32px", height: "32px", borderRadius: "50%", marginRight: "8px", objectFit: "cover" }} 
+            />
             Bloop Cinema
           </h2>
         </div>
@@ -491,45 +479,46 @@ export default function AdminPage() {
         <nav className="admin-sidebar__nav">
           <button
             type="button"
+            className={`admin-sidebar__item ${activeTab === "overview" ? "admin-sidebar__item--active" : ""}`}
+            onClick={() => setActiveTab("overview")}
+          >
+            Tổng quan
+          </button>
+          <button
+            type="button"
             className={`admin-sidebar__item ${activeTab === "movies" ? "admin-sidebar__item--active" : ""}`}
             onClick={() => setActiveTab("movies")}
           >
-            🎬 Danh sách phim
+            Danh sách phim
           </button>
           <button
             type="button"
             className={`admin-sidebar__item ${activeTab === "showtimes" ? "admin-sidebar__item--active" : ""}`}
             onClick={() => setActiveTab("showtimes")}
           >
-            🕒 Lịch chiếu phim
+            Lịch chiếu phim
           </button>
           <button
             type="button"
             className={`admin-sidebar__item ${activeTab === "layouts" ? "admin-sidebar__item--active" : ""}`}
             onClick={() => setActiveTab("layouts")}
           >
-            💺 Bố trí ghế ngồi
+            Bố trí ghế ngồi
           </button>
-          <button
-            type="button"
-            className={`admin-sidebar__item ${activeTab === "theaters" ? "admin-sidebar__item--active" : ""}`}
-            onClick={() => setActiveTab("theaters")}
-          >
-            🏛️ Quản lý rạp
-          </button>
+
           <button
             type="button"
             className={`admin-sidebar__item ${activeTab === "orders" ? "admin-sidebar__item--active" : ""}`}
             onClick={() => setActiveTab("orders")}
           >
-            💵 Giao dịch vé
+            Giao dịch vé
           </button>
           <button
             type="button"
             className={`admin-sidebar__item ${activeTab === "banners" ? "admin-sidebar__item--active" : ""}`}
             onClick={() => setActiveTab("banners")}
           >
-            🖼️ Banner trang chủ
+            Banner trang chủ
           </button>
         </nav>
 
@@ -546,26 +535,22 @@ export default function AdminPage() {
               navigate("/");
             }}
           >
-            🚪 Đăng xuất
+            Đăng xuất
           </button>
         </div>
       </aside>
 
       <main className="admin-main-content">
         <div className="admin-layout-page__head" style={{ marginBottom: "30px" }}>
-          <h1 style={{ fontSize: "28px", fontWeight: "800", color: "#f8fafc", margin: 0 }}>Quản trị hệ thống</h1>
-          <p style={{ color: "#94a3b8", marginTop: "6px" }}>Bảng điều khiển quản lý phòng vé, lịch chiếu và cấu hình rạp Bloop Cinema.</p>
+          <h1 style={{ fontSize: "28px", fontWeight: "800", margin: 0 }}>Quản trị hệ thống</h1>
         </div>
 
         {/* Metrics Grid */}
-        <div className="admin-metrics-grid">
+        <div className="admin-console__stats">
           <div className="admin-metric-card">
             <div className="admin-metric-card__info">
               <span className="admin-metric-card__label">Tổng phim</span>
               <span className="admin-metric-card__value">{movies.length}</span>
-            </div>
-            <div className="admin-metric-card__icon admin-metric-card__icon--blue">
-              🎬
             </div>
           </div>
 
@@ -574,18 +559,12 @@ export default function AdminPage() {
               <span className="admin-metric-card__label">Suất chiếu</span>
               <span className="admin-metric-card__value">{showtimes.length}</span>
             </div>
-            <div className="admin-metric-card__icon admin-metric-card__icon--purple">
-              🕒
-            </div>
           </div>
 
           <div className="admin-metric-card">
             <div className="admin-metric-card__info">
               <span className="admin-metric-card__label">Rạp chiếu</span>
               <span className="admin-metric-card__value">{theaters.length}</span>
-            </div>
-            <div className="admin-metric-card__icon admin-metric-card__icon--indigo">
-              🏛️
             </div>
           </div>
 
@@ -594,14 +573,20 @@ export default function AdminPage() {
               <span className="admin-metric-card__label">Doanh thu vé</span>
               <span className="admin-metric-card__value">{totalRevenue.toLocaleString("vi-VN")} đ</span>
             </div>
-            <div className="admin-metric-card__icon admin-metric-card__icon--emerald">
-              💵
-            </div>
           </div>
         </div>
 
         {loading ? <p className="section-muted" style={{ color: "#94a3b8" }}>Đang tải dữ liệu admin...</p> : null}
         {error ? <p className="book-error" style={{ background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.2)", color: "#fca5a5", padding: "12px 14px", borderRadius: "12px", fontSize: "13px" }}>{error}</p> : null}
+
+        {activeTab === "overview" ? (
+          <AdminOverviewTab
+            movies={movies}
+            showtimes={showtimes}
+            theaters={theaters}
+            orders={orders}
+          />
+        ) : null}
 
         {activeTab === "movies" ? (
           <div className="admin-glass-panel">
@@ -946,7 +931,7 @@ export default function AdminPage() {
                     <div className="admin-seat-preview" style={{ position: "relative", minHeight: "150px", background: "rgba(0,0,0,0.2)", borderRadius: 12, padding: 10 }}>
                       {(l.seats || []).length ? (
                         <div className="admin-seat-preview-free" style={{ position: "relative", height: "200px", overflow: "auto" }}>
-                          {l.seats.map((seat) => {
+                          {l.seats.filter(s => String(s.type || "standard").toLowerCase() !== "aisle").map((seat) => {
                             const blocked = (l.blockedSeats || []).includes(seat.code);
                             return (
                               <span
@@ -1019,9 +1004,7 @@ export default function AdminPage() {
           </div>
         ) : null}
 
-        {activeTab === "theaters" ? (
-          <AdminTheatersPage onCreated={() => loadAdminData()} />
-        ) : null}
+
 
         {activeTab === "orders" ? (
           <div className="admin-glass-panel">
@@ -1151,6 +1134,463 @@ export default function AdminPage() {
           </div>
         ) : null}
       </main>
+    </div>
+  );
+}
+
+function AdminOverviewTab({ movies, showtimes, theaters, orders }) {
+  const stats = useMemo(() => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+    const currentQuarter = Math.floor(currentMonth / 3);
+
+    let monthlyRevenue = 0;
+    let quarterlyRevenue = 0;
+    let yearlyRevenue = 0;
+    let totalSalesCount = 0;
+
+    const monthlyTrendData = Array.from({ length: 12 }, (_, i) => ({
+      month: i,
+      label: `T. ${i + 1}`,
+      revenue: 0,
+    }));
+
+    const movieRevenueMap = {};
+    const theaterRevenueMap = {};
+
+    // Dựng Map tra cứu để giải mã thông tin trống/outdated của đơn hàng
+    const movieMap = new Map();
+    if (Array.isArray(movies)) {
+      movies.forEach((item) => movieMap.set(item.id, item.title));
+    }
+
+    const theaterMap = new Map();
+    if (Array.isArray(theaters)) {
+      theaters.forEach((item) => theaterMap.set(item.id, item.name || item.id));
+    }
+
+    const showtimeMap = new Map();
+    if (Array.isArray(showtimes)) {
+      showtimes.forEach((item) => showtimeMap.set(item.id, item));
+    }
+
+    orders.forEach((o) => {
+      const s = String(o.status || "").toLowerCase();
+      const isPaid = s === "paid" || s === "success" || s === "completed" || s === "done";
+      if (!isPaid) return;
+
+      const amount = Number(o?.amountVnd ?? o?.amountVND ?? o?.totalAmount ?? 0);
+      const date = new Date(o.createdAt || o.created_at);
+      if (Number.isNaN(date.getTime())) return;
+
+      totalSalesCount += 1;
+
+      const y = date.getFullYear();
+      const m = date.getMonth();
+      const q = Math.floor(m / 3);
+
+      if (y === currentYear) {
+        yearlyRevenue += amount;
+        if (q === currentQuarter) {
+          quarterlyRevenue += amount;
+        }
+        if (m === currentMonth) {
+          monthlyRevenue += amount;
+        }
+        monthlyTrendData[m].revenue += amount;
+      }
+
+      // Giải mã Tên phim (movieTitle) sử dụng direct value hoặc fallback qua movieMap
+      let movieTitle = String(o.movieTitle || "").trim();
+      if (!movieTitle || movieTitle.startsWith("0001-01-01") || movieTitle.startsWith("Không rõ")) {
+        movieTitle = movieMap.get(o.movieId) || o.movieId || "Không rõ";
+      }
+
+      // Giải mã Tên rạp (theaterName) sử dụng direct value, theaterId hoặc showtimeId -> theaterId
+      let theaterName = String(o.theaterName || "").trim();
+      if (!theaterName || theaterName.startsWith("0001-01-01") || theaterName.startsWith("Không rõ")) {
+        if (o.theaterId) {
+          theaterName = theaterMap.get(o.theaterId) || o.theaterId;
+        } else {
+          const st = o.showtimeId ? showtimeMap.get(o.showtimeId) : null;
+          if (st?.theaterId) {
+            theaterName = theaterMap.get(st.theaterId) || st.theaterId;
+          } else {
+            theaterName = "Không rõ";
+          }
+        }
+      }
+
+      movieRevenueMap[movieTitle] = (movieRevenueMap[movieTitle] || 0) + amount;
+      theaterRevenueMap[theaterName] = (theaterRevenueMap[theaterName] || 0) + amount;
+    });
+
+    const topMovies = Object.entries(movieRevenueMap)
+      .map(([title, revenue]) => ({ title, revenue }))
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5);
+
+    const theaterStats = Object.entries(theaterRevenueMap)
+      .map(([name, revenue]) => ({ name, revenue }))
+      .sort((a, b) => b.revenue - a.revenue);
+
+    return {
+      monthlyRevenue,
+      quarterlyRevenue,
+      yearlyRevenue,
+      totalSalesCount,
+      monthlyTrendData,
+      topMovies,
+      theaterStats,
+    };
+  }, [orders, movies, showtimes, theaters]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "24px", width: "100%" }}>
+      {/* Period Revenue Cards */}
+      <div className="admin-dashboard__summary">
+        <div className="admin-dashboard__card">
+          <span className="admin-dashboard__card-label">Doanh thu tháng này</span>
+          <span className="admin-dashboard__card-value">{stats.monthlyRevenue.toLocaleString("vi-VN")} đ</span>
+          <span className="admin-dashboard__card-desc">Thống kê theo tháng dương lịch hiện tại</span>
+        </div>
+        <div className="admin-dashboard__card">
+          <span className="admin-dashboard__card-label">Doanh thu quý này</span>
+          <span className="admin-dashboard__card-value">{stats.quarterlyRevenue.toLocaleString("vi-VN")} đ</span>
+          <span className="admin-dashboard__card-desc">Thống kê theo quý hiện tại</span>
+        </div>
+        <div className="admin-dashboard__card">
+          <span className="admin-dashboard__card-label">Doanh thu năm nay</span>
+          <span className="admin-dashboard__card-value">{stats.yearlyRevenue.toLocaleString("vi-VN")} đ</span>
+          <span className="admin-dashboard__card-desc">Tích lũy trong năm hiện tại ({new Date().getFullYear()})</span>
+        </div>
+        <div className="admin-dashboard__card">
+          <span className="admin-dashboard__card-label">Tổng vé đã bán</span>
+          <span className="admin-dashboard__card-value">{stats.totalSalesCount.toLocaleString("vi-VN")} vé</span>
+          <span className="admin-dashboard__card-desc">Tất cả giao dịch thanh toán thành công</span>
+        </div>
+      </div>
+
+      {/* Charts section */}
+      <div className="admin-dashboard__grid">
+        <div className="admin-chart__container" style={{ gridColumn: "span 2" }}>
+          <h3 className="admin-chart__title">Xu hướng doanh thu</h3>
+          <p className="admin-chart__subtitle">Tổng hợp doanh thu theo các tháng trong năm nay</p>
+          <AreaChart data={stats.monthlyTrendData} />
+        </div>
+
+        <div className="admin-chart__container">
+          <h3 className="admin-chart__title">Top Phim doanh thu cao</h3>
+          <p className="admin-chart__subtitle">5 bộ phim đem lại doanh thu cao nhất</p>
+          <MovieBarChart data={stats.topMovies} />
+        </div>
+
+        <div className="admin-chart__container" style={{ gridColumn: "span 2" }}>
+          <h3 className="admin-chart__title">Doanh thu theo rạp</h3>
+          <p className="admin-chart__subtitle">Hiệu suất bán vé của từng chi nhánh rạp chiếu</p>
+          <TheaterBarChart data={stats.theaterStats} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AreaChart({ data }) {
+  const [tooltip, setTooltip] = useState({ x: 0, y: 0, text: "", show: false });
+  const maxVal = Math.max(...data.map(d => d.revenue), 100000);
+  
+  const width = 540;
+  const height = 180;
+  const paddingLeft = 60;
+  const paddingRight = 20;
+  const paddingTop = 10;
+  const paddingBottom = 25;
+  
+  const chartWidth = width - paddingLeft - paddingRight;
+  const chartHeight = height - paddingTop - paddingBottom;
+  
+  const points = data.map((d, i) => {
+    const x = paddingLeft + (i / (data.length - 1)) * chartWidth;
+    const y = paddingTop + chartHeight - (d.revenue / maxVal) * chartHeight;
+    return { x, y, label: d.label, val: d.revenue };
+  });
+  
+  const pathD = points.length 
+    ? "M " + points.map(p => `${p.x} ${p.y}`).join(" L ") 
+    : "";
+  const areaD = points.length 
+    ? `${pathD} L ${points[points.length - 1].x} ${paddingTop + chartHeight} L ${points[0].x} ${paddingTop + chartHeight} Z` 
+    : "";
+
+  return (
+    <div className="admin-chart__svg-wrap">
+      <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="chart-gradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#2563eb" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#2563eb" stopOpacity="0.0" />
+          </linearGradient>
+        </defs>
+        
+        {[0, 0.25, 0.5, 0.75, 1].map((r, i) => {
+          const y = paddingTop + r * chartHeight;
+          const val = maxVal * (1 - r);
+          return (
+            <g key={i}>
+              <line x1={paddingLeft} y1={y} x2={width - paddingRight} y2={y} className="chart-grid-line" />
+              <text x={paddingLeft - 8} y={y + 4} textAnchor="end" className="chart-axis-text">
+                {val >= 1000000 ? `${(val / 1000000).toFixed(1)}M` : val.toLocaleString("vi-VN")}
+              </text>
+            </g>
+          );
+        })}
+        
+        {points.length > 0 && (
+          <>
+            <path d={areaD} className="chart-area-path" />
+            <path d={pathD} className="chart-line-path" />
+          </>
+        )}
+        
+        {points.map((p, i) => (
+          <circle
+            key={i}
+            cx={p.x}
+            cy={p.y}
+            r="4"
+            className="chart-point-circle"
+            onMouseEnter={(e) => {
+              const svgEl = e.currentTarget.ownerSVGElement;
+              const rect = svgEl.getBoundingClientRect();
+              const pctX = (p.x / width) * rect.width;
+              const pctY = (p.y / height) * rect.height;
+              setTooltip({
+                x: pctX,
+                y: pctY,
+                text: `${p.label}: ${p.val.toLocaleString("vi-VN")} đ`,
+                show: true
+              });
+            }}
+            onMouseLeave={() => setTooltip(prev => ({ ...prev, show: false }))}
+          />
+        ))}
+
+        {data.map((d, i) => {
+          const x = paddingLeft + (i / (data.length - 1)) * chartWidth;
+          return (
+            <text key={i} x={x} y={height - 5} textAnchor="middle" className="chart-axis-text">
+              {d.label}
+            </text>
+          );
+        })}
+      </svg>
+      
+      {tooltip.show && (
+        <div 
+          className="admin-chart__tooltip" 
+          style={{ 
+            left: `${tooltip.x}px`, 
+            top: `${tooltip.y}px`, 
+            opacity: 1 
+          }}
+        >
+          {tooltip.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MovieBarChart({ data }) {
+  const [tooltip, setTooltip] = useState({ x: 0, y: 0, text: "", show: false });
+  const maxVal = Math.max(...data.map(d => d.revenue), 100000);
+  
+  const width = 540;
+  const height = 180;
+  const paddingLeft = 120;
+  const paddingRight = 60;
+  const paddingTop = 15;
+  const paddingBottom = 15;
+  
+  const chartWidth = width - paddingLeft - paddingRight;
+  const barHeight = 18;
+  const gap = 12;
+
+  return (
+    <div className="admin-chart__svg-wrap">
+      <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`}>
+        {data.map((d, i) => {
+          const y = paddingTop + i * (barHeight + gap);
+          const barWidth = (d.revenue / maxVal) * chartWidth;
+          return (
+            <g key={i}>
+              <text 
+                x={paddingLeft - 8} 
+                y={y + 13} 
+                textAnchor="end" 
+                className="chart-axis-text"
+                style={{ fontSize: "10px", fontWeight: "600" }}
+              >
+                {d.title.length > 20 ? `${d.title.substring(0, 18)}...` : d.title}
+              </text>
+              
+              <rect
+                x={paddingLeft}
+                y={y}
+                width={chartWidth}
+                height={barHeight}
+                fill="#f1f5f9"
+                rx="3"
+              />
+              
+              <rect
+                x={paddingLeft}
+                y={y}
+                width={barWidth}
+                height={barHeight}
+                fill="#3b82f6"
+                rx="3"
+                className="chart-bar-rect"
+                onMouseEnter={(e) => {
+                  const svgEl = e.currentTarget.ownerSVGElement;
+                  const rect = svgEl.getBoundingClientRect();
+                  const pctX = ((paddingLeft + barWidth / 2) / width) * rect.width;
+                  const pctY = (y / height) * rect.height;
+                  setTooltip({
+                    x: pctX,
+                    y: pctY,
+                    text: `${d.title}: ${d.revenue.toLocaleString("vi-VN")} đ`,
+                    show: true
+                  });
+                }}
+                onMouseLeave={() => setTooltip(prev => ({ ...prev, show: false }))}
+              />
+              
+              <text
+                x={paddingLeft + barWidth + 6}
+                y={y + 13}
+                textAnchor="start"
+                className="chart-axis-text"
+                style={{ fontWeight: "700", fill: "#1e3a8a" }}
+              >
+                {d.revenue >= 1000000 ? `${(d.revenue / 1000000).toFixed(1)}M` : d.revenue.toLocaleString("vi-VN")}
+              </text>
+            </g>
+          );
+        })}
+        {data.length === 0 && (
+          <text x={width / 2} y={height / 2} textAnchor="middle" className="chart-axis-text">
+            Chưa có dữ liệu giao dịch
+          </text>
+        )}
+      </svg>
+      {tooltip.show && (
+        <div 
+          className="admin-chart__tooltip" 
+          style={{ 
+            left: `${tooltip.x}px`, 
+            top: `${tooltip.y}px`, 
+            opacity: 1 
+          }}
+        >
+          {tooltip.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TheaterBarChart({ data }) {
+  const [tooltip, setTooltip] = useState({ x: 0, y: 0, text: "", show: false });
+  const maxVal = Math.max(...data.map(d => d.revenue), 100000);
+  
+  const width = 540;
+  const height = 180;
+  const paddingLeft = 50;
+  const paddingRight = 20;
+  const paddingTop = 15;
+  const paddingBottom = 25;
+  
+  const chartWidth = width - paddingLeft - paddingRight;
+  const chartHeight = height - paddingTop - paddingBottom;
+  const barWidth = Math.min(36, (chartWidth / (data.length || 1)) * 0.6);
+  const step = chartWidth / (data.length || 1);
+
+  return (
+    <div className="admin-chart__svg-wrap">
+      <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`}>
+        {[0, 0.25, 0.5, 0.75, 1].map((r, i) => {
+          const y = paddingTop + r * chartHeight;
+          const val = maxVal * (1 - r);
+          return (
+            <g key={i}>
+              <line x1={paddingLeft} y1={y} x2={width - paddingRight} y2={y} className="chart-grid-line" />
+              <text x={paddingLeft - 8} y={y + 4} textAnchor="end" className="chart-axis-text">
+                {val >= 1000000 ? `${(val / 1000000).toFixed(1)}M` : val.toLocaleString("vi-VN")}
+              </text>
+            </g>
+          );
+        })}
+        
+        {data.map((d, i) => {
+          const x = paddingLeft + i * step + (step - barWidth) / 2;
+          const h = (d.revenue / maxVal) * chartHeight;
+          const y = paddingTop + chartHeight - h;
+          return (
+            <g key={i}>
+              <rect
+                x={x}
+                y={y}
+                width={barWidth}
+                height={h}
+                fill="#818cf8"
+                rx="4"
+                className="chart-bar-rect"
+                onMouseEnter={(e) => {
+                  const svgEl = e.currentTarget.ownerSVGElement;
+                  const rect = svgEl.getBoundingClientRect();
+                  const pctX = ((x + barWidth / 2) / width) * rect.width;
+                  const pctY = (y / height) * rect.height;
+                  setTooltip({
+                    x: pctX,
+                    y: pctY,
+                    text: `${d.name}: ${d.revenue.toLocaleString("vi-VN")} đ`,
+                    show: true
+                  });
+                }}
+                onMouseLeave={() => setTooltip(prev => ({ ...prev, show: false }))}
+              />
+              <text
+                x={x + barWidth / 2}
+                y={paddingTop + chartHeight + 15}
+                textAnchor="middle"
+                className="chart-axis-text"
+                style={{ fontSize: "9px", fontWeight: "600" }}
+              >
+                {d.name.length > 15 ? `${d.name.substring(0, 12)}...` : d.name}
+              </text>
+            </g>
+          );
+        })}
+        {data.length === 0 && (
+          <text x={width / 2} y={height / 2} textAnchor="middle" className="chart-axis-text">
+            Chưa có dữ liệu giao dịch
+          </text>
+        )}
+      </svg>
+      {tooltip.show && (
+        <div 
+          className="admin-chart__tooltip" 
+          style={{ 
+            left: `${tooltip.x}px`, 
+            top: `${tooltip.y}px`, 
+            opacity: 1 
+          }}
+        >
+          {tooltip.text}
+        </div>
+      )}
     </div>
   );
 }

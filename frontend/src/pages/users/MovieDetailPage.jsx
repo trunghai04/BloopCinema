@@ -286,7 +286,7 @@ export default function MovieDetailPage() {
         </div>
       </div>
 
-      {!isUpcomingMovie && hasShowtimes ? (
+      {hasShowtimes ? (
         <section className="movie-detail-showtimes" aria-label="Suất chiếu">
           <h2 className="movie-detail-showtimes__heading">Chọn suất</h2>
           {dateTabs.length ? (

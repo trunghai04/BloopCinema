@@ -17,4 +17,4 @@ export { default as SeatSelectPage } from "./SeatSelectPage";
 export { default as PaymentPage } from "./PaymentPage";
 export { default as PaymentReturnPage } from "./PaymentReturnPage";
 export { default as TicketPage } from "./TicketPage";
-export { default as TheatersPage } from "./TheatersPage";
+

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { getProfile, login as apiLogin } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
+import logo from "../../assets/logo_rounded.png";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -37,29 +38,18 @@ export default function LoginPage() {
 
   return (
     <section className="auth-page">
-      <div className="auth-hero">
-        <div className="auth-hero__badge">BLOOP CINEMA</div>
-        <h1>Chào mừng trở lại</h1>
-        <p>
-          Đăng nhập để tiếp tục đặt vé, xem lịch sử giao dịch và nhận vé điện tử ngay sau thanh toán.
-        </p>
-        <div className="auth-hero__stats">
-          <div>
-            <strong>Hỗ trợ</strong>
-            <span>Thanh toán nhanh</span>
-          </div>
-          <div>
-            <strong>Vé điện tử</strong>
-            <span>Gửi qua email</span>
-          </div>
+      <div className="auth-card">
+        <div className="auth-brand">
+          <img src={logo} alt="Bloop Cinema Logo" className="auth-brand-logo" />
+          <h1 className="auth-brand-title">
+            Bloop <span>Cinemas</span>
+          </h1>
         </div>
-      </div>
 
-      <div className="auth-card auth-card--glass">
         <div className="auth-card__header">
-          <p className="auth-kicker">Đăng nhập</p>
-          <h2>Vào tài khoản của bạn</h2>
-          <p className="auth-desc">Dùng email và mật khẩu đã đăng ký.</p>
+          <p className="auth-kicker">Chào mừng trở lại</p>
+          <h2>Đăng nhập tài khoản</h2>
+          <p className="auth-desc">Nhập email và mật khẩu của bạn để tiếp tục.</p>
         </div>
 
         <form onSubmit={onSubmit} className="auth-form">
@@ -68,7 +58,7 @@ export default function LoginPage() {
             <input
               type="email"
               required
-              placeholder="you@example.com"
+              placeholder="username@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="username"

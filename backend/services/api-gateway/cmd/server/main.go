@@ -113,6 +113,7 @@ func main() {
 		{pathPrefix: "/api/v1/auth/admin-login", targetURL: authURL},
 		{pathPrefix: "/api/v1/auth/login", targetURL: userURL},
 		{pathPrefix: "/api/v1/auth/register", targetURL: userURL},
+		{pathPrefix: "/api/v1/auth/verify-otp", targetURL: userURL},
 		{pathPrefix: "/api/v1/auth", targetURL: authURL},
 		{pathPrefix: "/api/v1/users", targetURL: userURL},
 		{pathPrefix: "/api/v1/movies", targetURL: catalogURL},

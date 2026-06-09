@@ -89,7 +89,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	handler.RegisterRoutes(mux, repo, orderClient)
-	handler.RegisterReservationRoutes(mux, resRepo, natsPublisher)
+	handler.RegisterReservationRoutes(mux, resRepo, orderClient, natsPublisher)
 	handler.RegisterStripePaymentRoutes(mux, paymentClient)
 	mux.Handle("/metrics", promhttp.Handler())
 	metrics := newHTTPMetrics("booking_service")

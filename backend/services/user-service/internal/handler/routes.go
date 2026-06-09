@@ -2,10 +2,15 @@ package handler
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"math/big"
+	"net"
 	"net/http"
+	"net/smtp"
 	"os"
 	"strings"
 	"time"
@@ -72,6 +77,7 @@ func RegisterRoutes(mux *http.ServeMux, db *sql.DB) {
 	mux.HandleFunc("/ready", ready)
 	mux.HandleFunc("/api/v1/auth/login", login)
 	mux.HandleFunc("/api/v1/auth/register", register)
+	mux.HandleFunc("/api/v1/auth/verify-otp", verifyOTP)
 	mux.HandleFunc("/api/v1/users/me", me)
 	mux.HandleFunc("/api/v1/users/me/update", updateMe)
 }
@@ -106,21 +112,176 @@ func register(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "email, password and name are required", http.StatusBadRequest)
 		return
 	}
+
+	// 1. Check if email already exists in users table with a valid password
+	var exists bool
+	err := userDB.QueryRowContext(r.Context(), `SELECT EXISTS(SELECT 1 FROM users WHERE email = $1 AND password_hash <> '')`, req.Email).Scan(&exists)
+	if err != nil {
+		http.Error(w, "database query failed", http.StatusInternalServerError)
+		return
+	}
+	if exists {
+		http.Error(w, "email already exists", http.StatusConflict)
+		return
+	}
+
+	// 2. Hash password
 	hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
 		http.Error(w, "password hashing failed", http.StatusInternalServerError)
 		return
 	}
-	result, err := userDB.ExecContext(r.Context(), `INSERT INTO users (email, password_hash, name, role) VALUES ($1, $2, $3, 'user') ON CONFLICT (email) DO NOTHING`, req.Email, string(hash), req.Name)
+
+	// 3. Generate OTP
+	n, _ := rand.Int(rand.Reader, big.NewInt(900000))
+	otp := fmt.Sprintf("%06d", n.Int64()+100000)
+	expiresAt := time.Now().Add(5 * time.Minute)
+
+	// 4. Save to pending_registrations
+	_, err = userDB.ExecContext(r.Context(), `
+INSERT INTO pending_registrations (email, password_hash, name, otp, expires_at)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (email) DO UPDATE SET
+  password_hash = EXCLUDED.password_hash,
+  name = EXCLUDED.name,
+  otp = EXCLUDED.otp,
+  expires_at = EXCLUDED.expires_at
+`, req.Email, string(hash), req.Name, otp, expiresAt)
+	if err != nil {
+		http.Error(w, "save pending registration failed", http.StatusInternalServerError)
+		return
+	}
+
+	// 5. Send OTP Email in a background goroutine to prevent gateway timeouts
+	go func(emailVal, otpVal string) {
+		ctx := context.Background()
+		if err := sendOTPEmail(ctx, emailVal, otpVal); err != nil {
+			fmt.Printf("Error sending OTP email to %s: %v\n", emailVal, err)
+		} else {
+			fmt.Printf("Successfully sent OTP email to %s\n", emailVal)
+		}
+	}(req.Email, otp)
+
+	writeJSON(w, http.StatusOK, map[string]string{"message": "otp_sent", "email": req.Email})
+}
+
+func sendOTPEmail(ctx context.Context, to string, otp string) error {
+	host := strings.TrimSpace(os.Getenv("SMTP_HOST"))
+	user := strings.TrimSpace(os.Getenv("SMTP_USER"))
+	pass := strings.TrimSpace(os.Getenv("SMTP_PASS"))
+	from := strings.TrimSpace(os.Getenv("SMTP_FROM"))
+	if host == "" || from == "" {
+		fmt.Printf("SMTP NOT CONFIGURED. OTP for %s is %s\n", to, otp)
+		return nil
+	}
+	port := strings.TrimSpace(os.Getenv("SMTP_PORT"))
+	if port == "" {
+		port = "587"
+	}
+	addr := net.JoinHostPort(host, port)
+
+	body := fmt.Sprintf(`To: %s
+From: %s
+Subject: Ma xac thuc OTP - Bloop Cinema
+MIME-Version: 1.0
+Content-Type: text/html; charset=UTF-8
+
+<!DOCTYPE html>
+<html>
+<body style="font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 8px; border: 1px solid #e3e3e3;">
+    <h2 style="color: #4f46e5; text-align: center;">Xac thuc email cua ban</h2>
+    <p>Chao mung ban den voi Bloop Cinema. Vui long su dung ma OTP duoi day de hoan tat qua trinh dang ky tai khoan:</p>
+    <div style="font-size: 32px; font-weight: bold; text-align: center; letter-spacing: 5px; margin: 30px 0; color: #4f46e5;">%s</div>
+    <p>Ma OTP nay co hieu luc trong 5 phut. Vui long khong chia se ma nay voi bat ky ai.</p>
+    <p style="font-size: 12px; color: #888888; border-top: 1px solid #eeeeee; padding-top: 20px;">Day la email tu dong, vui long khong tra loi.</p>
+  </div>
+</body>
+</html>
+`, to, from, otp)
+
+	var auth smtp.Auth
+	if user != "" && pass != "" {
+		auth = smtp.PlainAuth("", user, pass, host)
+	}
+	if err := smtp.SendMail(addr, auth, from, []string{to}, []byte(body)); err != nil {
+		return err
+	}
+	return nil
+}
+
+type verifyOTPRequest struct {
+	Email string `json:"email"`
+	OTP   string `json:"otp"`
+}
+
+func verifyOTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req verifyOTPRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json payload", http.StatusBadRequest)
+		return
+	}
+	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
+	req.OTP = strings.TrimSpace(req.OTP)
+	if req.Email == "" || req.OTP == "" {
+		http.Error(w, "email and otp are required", http.StatusBadRequest)
+		return
+	}
+
+	var passwordHash, name, correctOTP string
+	var expiresAt time.Time
+	err := userDB.QueryRowContext(r.Context(), `
+SELECT password_hash, name, otp, expires_at
+FROM pending_registrations
+WHERE email = $1
+`, req.Email).Scan(&passwordHash, &name, &correctOTP, &expiresAt)
+	if err == sql.ErrNoRows {
+		http.Error(w, "no pending registration found", http.StatusNotFound)
+		return
+	} else if err != nil {
+		http.Error(w, "database query failed", http.StatusInternalServerError)
+		return
+	}
+
+	if time.Now().After(expiresAt) {
+		http.Error(w, "OTP has expired", http.StatusBadRequest)
+		return
+	}
+
+	if req.OTP != correctOTP {
+		http.Error(w, "incorrect OTP", http.StatusBadRequest)
+		return
+	}
+
+	// Insert into users or update if it exists as a skeleton row
+	_, err = userDB.ExecContext(r.Context(), `
+INSERT INTO users (email, password_hash, name, role)
+VALUES ($1, $2, $3, 'user')
+ON CONFLICT (email) DO UPDATE SET
+	password_hash = EXCLUDED.password_hash,
+	name = EXCLUDED.name,
+	role = 'user'
+`, req.Email, passwordHash, name)
 	if err != nil {
 		http.Error(w, "create user failed", http.StatusInternalServerError)
 		return
 	}
-	if affected, _ := result.RowsAffected(); affected == 0 {
-		http.Error(w, "email already exists", http.StatusConflict)
-		return
-	}
-	writeJSON(w, http.StatusCreated, map[string]string{"email": req.Email, "name": req.Name})
+
+	// Insert or update bcoins account
+	_, _ = userDB.ExecContext(r.Context(), `
+INSERT INTO user_bcoins (email, bcoins)
+VALUES ($1, 0)
+ON CONFLICT (email) DO NOTHING
+`, req.Email)
+
+	// Delete from pending_registrations
+	_, _ = userDB.ExecContext(r.Context(), `DELETE FROM pending_registrations WHERE email = $1`, req.Email)
+
+	writeJSON(w, http.StatusCreated, map[string]string{"email": req.Email, "name": name})
 }
 
 func login(w http.ResponseWriter, r *http.Request) {
@@ -287,7 +448,15 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS province TEXT NOT NULL DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS ward TEXT NOT NULL DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS district TEXT NOT NULL DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS address TEXT NOT NULL DEFAULT '';
-ALTER TABLE users ADD COLUMN IF NOT EXISTS bcoins BIGINT NOT NULL DEFAULT 0;`
+ALTER TABLE users ADD COLUMN IF NOT EXISTS bcoins BIGINT NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS pending_registrations (
+  email TEXT PRIMARY KEY,
+  password_hash TEXT NOT NULL,
+  name TEXT NOT NULL,
+  otp TEXT NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL
+);`
 	_, err := db.ExecContext(ctx, schema)
 	return err
 }

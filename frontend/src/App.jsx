@@ -22,7 +22,6 @@ import {
   SeatSelectPage,
   ShowtimesPage,
   TicketPage,
-  TheatersPage,
 } from "./pages/users";
 import {
   AdminMovieFormPage,
@@ -38,7 +37,6 @@ import { TheaterProvider, useTheater } from "./context/TheaterContext";
 
 const navLinks = [
   ["/showtimes", "LỊCH CHIẾU"],
-  ["/theaters", "RẠP"],
   ["/movies", "PHIM"],
   ["/genres", "THỂ LOẠI"],
   ["/promotions", "KHUYẾN MÃI"],
@@ -268,7 +266,6 @@ export default function App() {
             <Route path="/movies/:movieId" element={<MovieDetailPage />} />
             <Route path="/genres" element={<GenresPage />} />
             <Route path="/showtimes" element={<ShowtimesPage />} />
-            <Route path="/theaters" element={<TheatersPage />} />
             <Route path="/booking" element={<BookingPage />} />
             <Route path="/promotions" element={<PromotionsPage />} />
             <Route path="/news" element={<NewsPage />} />

@@ -21,6 +21,7 @@ import (
 	"booking-service/internal/catalog"
 	"booking-service/internal/events"
 	"booking-service/internal/model"
+	"booking-service/internal/order"
 	"booking-service/internal/payment"
 	"booking-service/internal/repository"
 
@@ -28,10 +29,11 @@ import (
 )
 
 type reservationHandler struct {
-	res      *repository.ReservationRepository
-	publish  events.Publisher
-	catalog  *catalog.Client
-	payments *payment.Client
+	res         *repository.ReservationRepository
+	publish     events.Publisher
+	catalog     *catalog.Client
+	payments    *payment.Client
+	orderClient *order.Client
 }
 
 type seatLockRequest struct {
@@ -58,12 +60,14 @@ var (
 func RegisterReservationRoutes(
 	mux *http.ServeMux,
 	res *repository.ReservationRepository,
+	orderClient *order.Client,
 	publisher events.Publisher,
 ) {
 	h := &reservationHandler{
-		res:     res,
-		publish: publisher,
-		catalog: catalog.NewClient(strings.TrimSpace(os.Getenv("CATALOG_SERVICE_URL"))),
+		res:         res,
+		publish:     publisher,
+		catalog:     catalog.NewClient(strings.TrimSpace(os.Getenv("CATALOG_SERVICE_URL"))),
+		orderClient: orderClient,
 	}
 	mux.HandleFunc("/api/v1/reservations/hold", h.createHold)
 	mux.HandleFunc("/api/v1/reservations/pay", h.payHold)
@@ -102,6 +106,59 @@ func (h *reservationHandler) createHold(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusConflict)
 		return
 	}
+
+	if h.orderClient != nil {
+		var movieTitle string
+		var theaterID string
+		var theaterName string
+		var showtimeLabel string
+		var showtimeStartAt string
+		var amountVnd int64
+
+		showtime, err := h.catalog.GetShowtime(r.Context(), req.ShowtimeID)
+		if err == nil && showtime != nil {
+			theaterID = showtime.TheaterID
+			showtimeStartAt = showtime.StartAt
+
+			if mv, err := h.catalog.GetMovie(r.Context(), req.MovieID); err == nil && mv != nil {
+				movieTitle = mv.Title
+			}
+
+			if th, err := h.catalog.GetTheater(r.Context(), showtime.TheaterID); err == nil && th != nil {
+				theaterName = th.Name
+			}
+
+			parsedStartAt, _ := catalog.ParseShowtimeStartAt(showtime.StartAt)
+			showtimeLabel = fmt.Sprintf("%s - %s", showtime.Hall, parsedStartAt.In(time.FixedZone("ICT", 7*3600)).Format("02/01/2006 15:04"))
+
+			pricePerSeat := int64(90000)
+			if priceStr := os.Getenv("TICKET_PRICE_PER_SEAT_VND"); priceStr != "" {
+				if val, err := strconv.ParseInt(priceStr, 10, 64); err == nil && val > 0 {
+					pricePerSeat = val
+				}
+			}
+			amountVnd = pricePerSeat * int64(len(req.Seats))
+		}
+
+		_, _ = h.orderClient.Create(r.Context(), order.CreateOrderRequest{
+			ID:              reservation.ID,
+			UserID:          reservation.UserEmail,
+			UserEmail:       reservation.UserEmail,
+			MovieID:         reservation.MovieID,
+			MovieTitle:      movieTitle,
+			TheaterID:       theaterID,
+			TheaterName:     theaterName,
+			ShowtimeID:      reservation.ShowtimeID,
+			ShowtimeLabel:   showtimeLabel,
+			ShowtimeStartAt: showtimeStartAt,
+			SeatCode:        reservation.SeatCodes,
+			SeatCodes:       req.Seats,
+			TotalAmount:     amountVnd,
+			Currency:        "VND",
+			Status:          "pending",
+		})
+	}
+
 	if h.publish != nil {
 		_ = h.publish.PublishReservationEvent(r.Context(), "reservation.hold.created", reservation)
 	}
@@ -148,6 +205,15 @@ func (h *reservationHandler) payHold(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	if h.orderClient != nil {
+		if out.State == model.StatePaid {
+			_ = h.orderClient.UpdateStatus(r.Context(), out.ID, "paid")
+		} else if out.State == model.StatePaymentFailed {
+			_ = h.orderClient.UpdateStatus(r.Context(), out.ID, "failed")
+		}
+	}
+
 	if h.publish != nil {
 		if out.State == model.StatePaid {
 			_ = h.publish.PublishReservationEvent(r.Context(), "reservation.paid", out)

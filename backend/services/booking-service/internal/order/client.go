@@ -18,6 +18,7 @@ type Client struct {
 }
 
 type CreateOrderRequest struct {
+	ID              string   `json:"id"`
 	UserID          string   `json:"userId,omitempty"`
 	UserEmail       string   `json:"userEmail"`
 	MovieID         string   `json:"movieId"`
@@ -59,4 +60,21 @@ func (c *Client) Create(ctx context.Context, req CreateOrderRequest) (map[string
 	var out map[string]any
 	if err := json.Unmarshal(data, &out); err != nil { return nil, err }
 	return out, nil
+}
+
+func (c *Client) UpdateStatus(ctx context.Context, orderID string, status string) error {
+	if c == nil { return fmt.Errorf("order client unavailable") }
+	payload := map[string]string{"status": status}
+	body, _ := json.Marshal(payload)
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/orders/"+orderID, bytes.NewReader(body))
+	if err != nil { return err }
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.hc.Do(httpReq)
+	if err != nil { return err }
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		data, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("order update status failed: %s", strings.TrimSpace(string(data)))
+	}
+	return nil
 }

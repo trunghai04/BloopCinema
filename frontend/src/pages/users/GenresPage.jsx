@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
-import { getGenres, getMovies } from "../../api/client";
+import { useEffect, useMemo, useState } from "react";
+import { getGenres, getMovies, getShowtimes } from "../../api/client";
 import MovieCardBeta from "../../components/MovieCardBeta";
+import { useTheater } from "../../context/TheaterContext";
 
 export default function GenresPage() {
+  const { selectedTheater } = useTheater();
   const [genres, setGenres] = useState([]);
   const [movies, setMovies] = useState([]);
+  const [showtimes, setShowtimes] = useState([]);
   const [selectedGenre, setSelectedGenre] = useState(null);
   const [loadError, setLoadError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -14,12 +17,14 @@ export default function GenresPage() {
       setIsLoading(true);
       setLoadError("");
       try {
-        const [genresData, moviesData] = await Promise.all([
+        const [genresData, moviesData, showtimesData] = await Promise.all([
           getGenres(),
           getMovies(),
+          getShowtimes(),
         ]);
         setGenres(genresData || []);
         setMovies(moviesData || []);
+        setShowtimes(showtimesData || []);
         // Chọn thể loại đầu tiên theo mặc định
         if (genresData && genresData.length > 0) {
           setSelectedGenre(genresData[0]);
@@ -36,12 +41,28 @@ export default function GenresPage() {
     fetchData();
   }, []);
 
-  const filteredMovies =
-    selectedGenre && movies.length > 0
-      ? movies.filter((movie) =>
-          movie.genre?.toLowerCase().includes(selectedGenre.toLowerCase()),
-        )
-      : movies;
+  const showtimesByMovieId = useMemo(() => {
+    const map = new Map();
+    const theaterId = String(selectedTheater?.id || "").toLowerCase();
+    showtimes.forEach((st) => {
+      const stTheaterId = String(st.theaterId || st.theater || st.cinema || "").toLowerCase();
+      if (theaterId && stTheaterId && stTheaterId !== theaterId) return;
+      if (!map.has(st.movieId)) map.set(st.movieId, []);
+      map.get(st.movieId).push(st);
+    });
+    return map;
+  }, [showtimes, selectedTheater?.id]);
+
+  const filteredMovies = useMemo(() => {
+    let list = movies;
+    // 1. Lọc theo thể loại
+    if (selectedGenre) {
+      list = list.filter((movie) =>
+        movie.genre?.toLowerCase().includes(selectedGenre.toLowerCase())
+      );
+    }
+    return list;
+  }, [movies, selectedGenre]);
 
   return (
     <section className="genres-page">
@@ -92,7 +113,11 @@ export default function GenresPage() {
           ) : filteredMovies && filteredMovies.length > 0 ? (
             <div className="movies-grid">
               {filteredMovies.map((movie) => (
-                <MovieCardBeta key={movie.id} movie={movie} />
+                <MovieCardBeta
+                  key={movie.id}
+                  movie={movie}
+                  showBuyButton={(showtimesByMovieId.get(movie.id) || []).length > 0}
+                />
               ))}
             </div>
           ) : (

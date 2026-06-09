@@ -70,7 +70,6 @@ export default function AdminSeatLayoutEditorPage() {
   const [dragState, setDragState] = useState(null);
   const [undoStack, setUndoStack] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
-  const [bulkType, setBulkType] = useState("standard");
   const [addSeatType, setAddSeatType] = useState("standard");
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -288,13 +287,37 @@ export default function AdminSeatLayoutEditorPage() {
     });
   }
 
-  function applyBulkType() {
+  function applyTypeDirectly(newType) {
     if (!selectedCodes.size) return;
     updateSeats((seats) =>
       seats.map((s) =>
-        selectedCodes.has(String(s.code || "").toUpperCase()) ? { ...s, type: bulkType } : s
+        selectedCodes.has(String(s.code || "").toUpperCase()) ? { ...s, type: newType } : s
       )
     );
+  }
+
+  function toggleSelectedEnabled() {
+    if (!selectedCodes.size) return;
+    updateSeats((seats) =>
+      seats.map((s) =>
+        selectedCodes.has(String(s.code || "").toUpperCase()) ? { ...s, enabled: !s.enabled } : s
+      )
+    );
+  }
+
+  function regenerateLayoutFromGrid() {
+    if (window.confirm("Bạn có chắc chắn muốn xóa sơ đồ hiện tại để tạo lại từ đầu theo lưới Hàng & Cột mới?")) {
+      const nextSeats = makeSeatNodesFromGrid(layoutDraft.rows, layoutDraft.cols);
+      updateSeats(() => nextSeats);
+      setSelectedCodes(new Set());
+    }
+  }
+
+  function clearLayoutCanvas() {
+    if (window.confirm("Bạn có chắc chắn muốn xóa toàn bộ ghế trên sơ đồ?")) {
+      updateSeats(() => []);
+      setSelectedCodes(new Set());
+    }
   }
 
   function onCanvasClick(event) {
@@ -347,6 +370,8 @@ export default function AdminSeatLayoutEditorPage() {
       type: "move",
       startX: event.clientX,
       startY: event.clientY,
+      originalSeats: JSON.parse(JSON.stringify(layoutDraft.seats || [])),
+      hasMoved: false,
       originPositions: (layoutDraft.seats || [])
         .filter((s) => selectedCodes.has(String(s.code || "").toUpperCase()) || String(s.code || "").toUpperCase() === code)
         .map((s) => ({ code: String(s.code || "").toUpperCase(), x: s.x, y: s.y })),
@@ -401,6 +426,9 @@ export default function AdminSeatLayoutEditorPage() {
       }
       const dx = colToX(xToCol((event.clientX - dragState.startX) / zoom));
       const dy = rowToY(yToRow((event.clientY - dragState.startY) / zoom));
+      if (dx !== 0 || dy !== 0) {
+        dragState.hasMoved = true;
+      }
       setLayoutDraft((prev) => ({
         ...prev,
         seats: (prev.seats || []).map((s) => {
@@ -429,6 +457,10 @@ export default function AdminSeatLayoutEditorPage() {
         setSelectedCodes(nextSelected);
         setSelectionBox(null);
       }
+      if (dragState.type === "move" && dragState.hasMoved) {
+        setUndoStack((prev) => [...prev.slice(-39), JSON.parse(JSON.stringify(dragState.originalSeats))]);
+        setRedoStack([]);
+      }
       setDragState(null);
     };
     window.addEventListener("mousemove", onMove);
@@ -440,19 +472,84 @@ export default function AdminSeatLayoutEditorPage() {
   }, [dragState, canvasSize.width, canvasSize.height, zoom, pan.x, pan.y, layoutDraft.seats]);
 
   useEffect(() => {
-    const onKeyDown = (e) => {
-      if (e.code === "Space") setSpacePressed(true);
+    const handleKeyDown = (e) => {
+      if (
+        document.activeElement.tagName === "INPUT" ||
+        document.activeElement.tagName === "SELECT" ||
+        document.activeElement.tagName === "TEXTAREA"
+      ) {
+        return;
+      }
+
+      if (e.code === "Space") {
+        setSpacePressed(true);
+        e.preventDefault();
+      }
+
+      // Undo/Redo
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        undo();
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === "y" || (e.shiftKey && e.key.toLowerCase() === "z"))) {
+        e.preventDefault();
+        redo();
+      }
+
+      // Clipboard shortcuts
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
+        if (selectedCodes.size > 0) {
+          e.preventDefault();
+          copySelected();
+        }
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "v") {
+        if (clipboard.length > 0) {
+          e.preventDefault();
+          pasteClipboard();
+        }
+      }
+
+      // Delete/Backspace
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedCodes.size > 0) {
+          e.preventDefault();
+          const targets = new Set(selectedCodes);
+          updateSeats((seats) =>
+            seats.filter((s) => !targets.has(String(s.code || "").toUpperCase()))
+          );
+          setSelectedCodes(new Set());
+        }
+      }
+
+      // Fast Apply Type Shortcuts
+      if (selectedCodes.size > 0) {
+        let typeToApply = null;
+        if (e.key === "1") typeToApply = "standard";
+        if (e.key === "2") typeToApply = "vip";
+        if (e.key === "3") typeToApply = "couple";
+        if (e.key === "4") typeToApply = "aisle";
+
+        if (typeToApply) {
+          e.preventDefault();
+          applyTypeDirectly(typeToApply);
+        }
+      }
     };
-    const onKeyUp = (e) => {
-      if (e.code === "Space") setSpacePressed(false);
+
+    const handleKeyUp = (e) => {
+      if (e.code === "Space") {
+        setSpacePressed(false);
+      }
     };
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
     return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
     };
-  }, []);
+  }, [selectedCodes, clipboard, layoutDraft.seats, rows, pasteCount]);
 
   function copySelected() {
     const selected = (layoutDraft.seats || []).filter((s) =>
@@ -575,7 +672,7 @@ export default function AdminSeatLayoutEditorPage() {
               </option>
             ))}
           </select>
-          <p>Tool-based: chọn, thêm, xóa. Kéo cả cụm ghế với multi-select (Shift+click).</p>
+          <p>Công cụ: chọn, thêm, xóa. Kéo cả cụm ghế bằng cách chọn nhiều hoặc dùng hộp chọn.</p>
         </div>
         <div className="admin-layout-page__actions">
           <Link to="/admin" className="btn-secondary">
@@ -592,6 +689,7 @@ export default function AdminSeatLayoutEditorPage() {
           value={layoutDraft.rows}
           onChange={(e) => setLayoutDraft((p) => ({ ...p, rows: e.target.value }))}
           placeholder="Rows: A,B,C,D..."
+          title="Các hàng (cách nhau bởi dấu phẩy)"
         />
         <input
           type="number"
@@ -599,40 +697,61 @@ export default function AdminSeatLayoutEditorPage() {
           value={layoutDraft.cols}
           onChange={(e) => setLayoutDraft((p) => ({ ...p, cols: Number(e.target.value) || 10 }))}
           placeholder="Cols"
+          title="Số cột tối đa"
         />
+        <button
+          type="button"
+          className="btn-secondary"
+          style={{ background: "rgba(99, 102, 241, 0.2)", color: "#818cf8", borderColor: "rgba(99, 102, 241, 0.4)", fontWeight: "bold" }}
+          onClick={regenerateLayoutFromGrid}
+        >
+          Tạo lại từ lưới
+        </button>
+        <button
+          type="button"
+          className="btn-secondary"
+          style={{ background: "rgba(239, 68, 68, 0.15)", color: "#f87171", borderColor: "rgba(239, 68, 68, 0.3)", fontWeight: "bold" }}
+          onClick={clearLayoutCanvas}
+        >
+          Xóa toàn bộ
+        </button>
+        
+        <div style={{ width: "2px", background: "rgba(255,255,255,0.1)", margin: "0 8px" }} />
+
         <button
           type="button"
           className={tool === TOOLS.SELECT ? "admin-tool-btn admin-tool-btn--active" : "admin-tool-btn"}
           onClick={() => setTool(TOOLS.SELECT)}
         >
-          Select
+          Select (Chọn)
         </button>
         <button
           type="button"
           className={tool === TOOLS.ADD ? "admin-tool-btn admin-tool-btn--active" : "admin-tool-btn"}
           onClick={() => setTool(TOOLS.ADD)}
         >
-          Add
+          Add (Thêm)
         </button>
         <select
           value={addSeatType}
           onChange={(e) => setAddSeatType(e.target.value)}
           className="admin-add-seat-type"
-          title="Loại ghế khi thêm mới"
+          title="Loại ghế khi bấm thêm mới"
         >
-          <option value="standard">Thường</option>
+          <option value="standard">Standard (Thường)</option>
           <option value="vip">VIP</option>
-          <option value="couple">Đôi</option>
+          <option value="couple">Couple (Đôi)</option>
+          <option value="aisle">Aisle (Lối đi)</option>
         </select>
         <button
           type="button"
           className={tool === TOOLS.ERASE ? "admin-tool-btn admin-tool-btn--active" : "admin-tool-btn"}
           onClick={() => setTool(TOOLS.ERASE)}
         >
-          Erase
+          Erase (Xóa)
         </button>
         <button type="button" className="btn-secondary" onClick={fillMissingSeats}>
-          Tự điền ghế trống
+          Điền ghế trống
         </button>
         <button type="button" className="btn-secondary" onClick={autoRenumber}>
           Đánh số lại
@@ -664,42 +783,48 @@ export default function AdminSeatLayoutEditorPage() {
       </div>
 
       <div className="admin-layout-page__toolbar">
-        <input
-          type="number"
-          min={1000}
-          value={layoutDraft.seatPrices?.standard || DEFAULT_SEAT_PRICES.standard}
-          onChange={(e) =>
-            setLayoutDraft((p) => ({
-              ...p,
-              seatPrices: { ...(p.seatPrices || DEFAULT_SEAT_PRICES), standard: Number(e.target.value) || DEFAULT_SEAT_PRICES.standard }
-            }))
-          }
-          placeholder="Giá ghế thường"
-        />
-        <input
-          type="number"
-          min={1000}
-          value={layoutDraft.seatPrices?.vip || DEFAULT_SEAT_PRICES.vip}
-          onChange={(e) =>
-            setLayoutDraft((p) => ({
-              ...p,
-              seatPrices: { ...(p.seatPrices || DEFAULT_SEAT_PRICES), vip: Number(e.target.value) || DEFAULT_SEAT_PRICES.vip }
-            }))
-          }
-          placeholder="Giá ghế VIP"
-        />
-        <input
-          type="number"
-          min={1000}
-          value={layoutDraft.seatPrices?.couple || DEFAULT_SEAT_PRICES.couple}
-          onChange={(e) =>
-            setLayoutDraft((p) => ({
-              ...p,
-              seatPrices: { ...(p.seatPrices || DEFAULT_SEAT_PRICES), couple: Number(e.target.value) || DEFAULT_SEAT_PRICES.couple }
-            }))
-          }
-          placeholder="Giá ghế đôi"
-        />
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={{ fontSize: "14px", color: "#94a3b8" }}>Giá vé:</span>
+          <input
+            type="number"
+            min={1000}
+            value={layoutDraft.seatPrices?.standard || DEFAULT_SEAT_PRICES.standard}
+            onChange={(e) =>
+              setLayoutDraft((p) => ({
+                ...p,
+                seatPrices: { ...(p.seatPrices || DEFAULT_SEAT_PRICES), standard: Number(e.target.value) || DEFAULT_SEAT_PRICES.standard }
+              }))
+            }
+            placeholder="Giá ghế thường"
+            title="Giá ghế thường"
+          />
+          <input
+            type="number"
+            min={1000}
+            value={layoutDraft.seatPrices?.vip || DEFAULT_SEAT_PRICES.vip}
+            onChange={(e) =>
+              setLayoutDraft((p) => ({
+                ...p,
+                seatPrices: { ...(p.seatPrices || DEFAULT_SEAT_PRICES), vip: Number(e.target.value) || DEFAULT_SEAT_PRICES.vip }
+              }))
+            }
+            placeholder="Giá ghế VIP"
+            title="Giá ghế VIP"
+          />
+          <input
+            type="number"
+            min={1000}
+            value={layoutDraft.seatPrices?.couple || DEFAULT_SEAT_PRICES.couple}
+            onChange={(e) =>
+              setLayoutDraft((p) => ({
+                ...p,
+                seatPrices: { ...(p.seatPrices || DEFAULT_SEAT_PRICES), couple: Number(e.target.value) || DEFAULT_SEAT_PRICES.couple }
+              }))
+            }
+            placeholder="Giá ghế đôi"
+            title="Giá ghế đôi"
+          />
+        </div>
       </div>
 
       <div className="admin-layout-page__workspace">
@@ -735,7 +860,13 @@ export default function AdminSeatLayoutEditorPage() {
                   ? gheVipImg
                   : seatType === "couple"
                     ? gheDoiImg
-                    : gheThuongImg;
+                    : seatType === "standard"
+                      ? gheThuongImg
+                      : null;
+              
+              const isAisle = seatType === "aisle";
+              const opacity = seat.enabled === false ? 0.35 : 1;
+
               return (
                 <button
                   key={code}
@@ -750,18 +881,20 @@ export default function AdminSeatLayoutEditorPage() {
                     minWidth: `${SEAT_W}px`,
                     minHeight: `${SEAT_H}px`,
                     padding: 0,
-                    border: "none",
-                    borderRadius: "0",
+                    border: isAisle ? "1.5px dashed rgba(255, 255, 255, 0.3)" : "none",
+                    borderRadius: isAisle ? "6px" : "0",
                     outline: "none",
                     overflow: "hidden",
                     cursor: "grab",
                     userSelect: "none",
                     color: "inherit",
-                    backgroundColor: "transparent",
-                    backgroundImage: `url(${seatImage})`,
+                    backgroundColor: isAisle ? "rgba(255, 255, 255, 0.05)" : "transparent",
+                    backgroundImage: seatImage ? `url(${seatImage})` : "none",
                     backgroundSize: "100% 100%",
                     backgroundRepeat: "no-repeat",
-                    backgroundPosition: "center"
+                    backgroundPosition: "center",
+                    opacity: opacity,
+                    transition: "all 0.15s ease",
                   }}
                   onMouseDown={(e) => {
                     e.stopPropagation();
@@ -772,7 +905,33 @@ export default function AdminSeatLayoutEditorPage() {
                     e.stopPropagation();
                   }}
                 >
-                  <span className="admin-seat__label" style={{ position: "absolute" }}>{code}</span>
+                  <span 
+                    className="admin-seat__label" 
+                    style={{ 
+                      position: "absolute",
+                      color: isAisle ? "rgba(255, 255, 255, 0.4)" : "#fff",
+                      fontWeight: isAisle ? "400" : "800",
+                      fontSize: isAisle ? "8px" : "9px"
+                    }}
+                  >
+                    {code}
+                  </span>
+                  {seat.enabled === false && !isAisle && (
+                    <div style={{
+                      position: "absolute",
+                      inset: 0,
+                      background: "rgba(239, 68, 68, 0.25)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#ef4444",
+                      fontSize: "12px",
+                      fontWeight: "bold",
+                      textShadow: "0 1px 2px rgba(0,0,0,0.8)"
+                    }}>
+                      ✕
+                    </div>
+                  )}
                 </button>
               );
             })}
@@ -792,39 +951,109 @@ export default function AdminSeatLayoutEditorPage() {
 
         <aside className="admin-seat-inspector">
           <h3>Inspector</h3>
-          <p>{selectedCodes.size} ghế đang chọn</p>
-          <select value={bulkType} onChange={(e) => setBulkType(e.target.value)}>
-            <option value="standard">ghế 1</option>
-            <option value="couple">ghế đôi</option>
-            <option value="vip">vip</option>
-            <option value="aisle">lối đi</option>
-          </select>
-          <button type="button" className="btn-secondary" onClick={applyBulkType} disabled={!selectedCodes.size}>
-            Áp loại ghế cho vùng chọn
-          </button>
-          <button
-            type="button"
-            className="btn-secondary"
-            disabled={!selectedCodes.size}
-            onClick={() => {
-              const targets = new Set(selectedCodes);
-              updateSeats((seats) =>
-                seats.filter((s) => !targets.has(String(s.code || "").toUpperCase()))
-              );
-              setSelectedCodes(new Set());
-            }}
-          >
-            Xóa vùng chọn
-          </button>
+          <p style={{ fontSize: "14px", fontWeight: "bold", color: "#2563eb" }}>{selectedCodes.size} ghế đang chọn</p>
+          
+          <div className="inspector-actions" style={{ display: "grid", gap: "8px", marginTop: "12px" }}>
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ background: "#f1f5f9", color: "#334155", borderColor: "#cbd5e1", textAlign: "left", paddingLeft: "12px" }}
+              disabled={!selectedCodes.size}
+              onClick={() => applyTypeDirectly("standard")}
+            >
+              Ghế Thường (Phím 1)
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ background: "#fef9c3", color: "#854d0e", borderColor: "#fef08a", textAlign: "left", paddingLeft: "12px" }}
+              disabled={!selectedCodes.size}
+              onClick={() => applyTypeDirectly("vip")}
+            >
+              Ghế VIP (Phím 2)
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ background: "#fee2e2", color: "#991b1b", borderColor: "#fecaca", textAlign: "left", paddingLeft: "12px" }}
+              disabled={!selectedCodes.size}
+              onClick={() => applyTypeDirectly("couple")}
+            >
+              Ghế Đôi (Phím 3)
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ background: "#f1f5f9", color: "#475569", borderColor: "#cbd5e1", textAlign: "left", paddingLeft: "12px" }}
+              disabled={!selectedCodes.size}
+              onClick={() => applyTypeDirectly("aisle")}
+            >
+              Lối Đi / Trống (Phím 4)
+            </button>
+            
+            <div style={{ height: "1px", background: "#e2e8f0", margin: "4px 0" }} />
+
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ background: "#eff6ff", color: "#1d4ed8", borderColor: "#bfdbfe", fontWeight: "bold" }}
+              disabled={!selectedCodes.size}
+              onClick={toggleSelectedEnabled}
+            >
+              Bật/Tắt hoạt động (Khóa)
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              style={{ background: "#fee2e2", color: "#b91c1c", borderColor: "#fecaca", fontWeight: "bold" }}
+              disabled={!selectedCodes.size}
+              onClick={() => {
+                const targets = new Set(selectedCodes);
+                updateSeats((seats) =>
+                  seats.filter((s) => !targets.has(String(s.code || "").toUpperCase()))
+                );
+                setSelectedCodes(new Set());
+              }}
+            >
+              Xóa ghế khỏi sơ đồ (Del)
+            </button>
+          </div>
+
           {selectedSeat ? (
-            <div className="admin-seat-inspector__detail">
-              <strong>{selectedSeat.code}</strong>
-              <span>
-                ({xToCol(selectedSeat.x) + 1}, {yToRow(selectedSeat.y) + 1})
-              </span>
+            <div className="admin-seat-inspector__detail" style={{ marginTop: "16px", padding: "12px", background: "#f8fafc", borderRadius: "12px", border: "1px solid #cbd5e1" }}>
+              <strong>Chi tiết ghế: {selectedSeat.code}</strong>
+              <div style={{ display: "grid", gap: "6px", fontSize: "12px", marginTop: "8px", opacity: 0.85 }}>
+                <span>Vị trí: Hàng {yToRow(selectedSeat.y) + 1}, Cột {xToCol(selectedSeat.x) + 1}</span>
+                <span>Tọa độ: X={selectedSeat.x}, Y={selectedSeat.y}</span>
+                <span>Kiểu ghế: <span style={{ textTransform: "capitalize", fontWeight: "bold", color: "#2563eb" }}>{selectedSeat.type}</span></span>
+                <span>Trạng thái: <span style={{ color: selectedSeat.enabled ? "#16a34a" : "#dc2626", fontWeight: "bold" }}>{selectedSeat.enabled ? "Hoạt động" : "Bị khóa"}</span></span>
+              </div>
             </div>
           ) : null}
         </aside>
+      </div>
+
+      <div className="admin-layout-page__shortcuts-guide" style={{
+        marginTop: "24px",
+        padding: "16px 20px",
+        background: "#ffffff",
+        border: "1px solid #e2e8f0",
+        borderRadius: "16px",
+        color: "#64748b",
+        fontSize: "13px",
+        boxShadow: "0 1px 3px 0 rgba(0, 0, 0, 0.05)"
+      }}>
+        <h4 style={{ color: "#0f172a", marginTop: 0, marginBottom: "10px", fontWeight: "700" }}>Bảng hướng dẫn phím tắt nhanh (Figma-style)</h4>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "10px" }}>
+          <div><kbd style={{ background: "#f1f5f9", color: "#0f172a", padding: "2px 6px", borderRadius: "4px", marginRight: "6px", border: "1px solid #cbd5e1" }}>1</kbd> Ghế Thường</div>
+          <div><kbd style={{ background: "#f1f5f9", color: "#0f172a", padding: "2px 6px", borderRadius: "4px", marginRight: "6px", border: "1px solid #cbd5e1" }}>2</kbd> Ghế VIP</div>
+          <div><kbd style={{ background: "#f1f5f9", color: "#0f172a", padding: "2px 6px", borderRadius: "4px", marginRight: "6px", border: "1px solid #cbd5e1" }}>3</kbd> Ghế Đôi</div>
+          <div><kbd style={{ background: "#f1f5f9", color: "#0f172a", padding: "2px 6px", borderRadius: "4px", marginRight: "6px", border: "1px solid #cbd5e1" }}>4</kbd> Lối đi / Trống (Aisle)</div>
+          <div><kbd style={{ background: "#f1f5f9", color: "#0f172a", padding: "2px 6px", borderRadius: "4px", marginRight: "6px", border: "1px solid #cbd5e1" }}>Del / Backspace</kbd> Xóa ghế được chọn</div>
+          <div><kbd style={{ background: "#f1f5f9", color: "#0f172a", padding: "2px 6px", borderRadius: "4px", marginRight: "6px", border: "1px solid #cbd5e1" }}>Space + Kéo chuột</kbd> Pan di chuyển canvas</div>
+          <div><kbd style={{ background: "#f1f5f9", color: "#0f172a", padding: "2px 6px", borderRadius: "4px", marginRight: "6px", border: "1px solid #cbd5e1" }}>Ctrl + C / V</kbd> Sao chép / Dán cụm ghế</div>
+          <div><kbd style={{ background: "#f1f5f9", color: "#0f172a", padding: "2px 6px", borderRadius: "4px", marginRight: "6px", border: "1px solid #cbd5e1" }}>Ctrl + Z / Y</kbd> Hoàn tác / Làm lại</div>
+        </div>
       </div>
 
       {error ? <p className="book-error">{error}</p> : null}

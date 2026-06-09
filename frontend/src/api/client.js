@@ -243,6 +243,15 @@ export async function registerUser({ name, email, password }) {
   return parseJson(response);
 }
 
+export async function verifyOtp(email, otp) {
+  const response = await apiFetch("/api/v1/auth/verify-otp", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, otp })
+  });
+  return parseJson(response);
+}
+
 export async function getProfile(email) {
   const q = new URLSearchParams({ email });
   const response = await apiFetch(`/api/v1/users/me?${q}`);

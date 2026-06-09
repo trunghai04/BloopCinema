@@ -281,6 +281,11 @@ services:
       DATABASE_URL: postgres://user_user:user_service_pw_change_me@postgres-user:5432/user_db?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-dev-super-secret-change-me}
       OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4318
+      SMTP_HOST: smtp.gmail.com
+      SMTP_PORT: 587
+      SMTP_USER: bloop.io.vn@gmail.com
+      SMTP_PASS: eziu bcaw sgqh qphn
+      SMTP_FROM: noreply@bloop.io.vn
     depends_on:
       postgres-user:
         condition: service_healthy

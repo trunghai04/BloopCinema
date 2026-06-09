@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { adminLogin } from "../../api/client";
 import { useAuth } from "../../context/AuthContext";
+import logo from "../../assets/logo_rounded.png";
 
 export default function AdminLoginPage() {
   const { login, isLoggedIn, user } = useAuth();
@@ -39,7 +40,10 @@ export default function AdminLoginPage() {
     <div className="admin-login-container">
       <div className="admin-login-card">
         <div className="admin-login-logo">
-          <span className="admin-login-logo__badge">Bloop Console</span>
+          <img src={logo} alt="Bloop Cinema Logo" style={{ width: "48px", height: "48px", marginBottom: "12px", objectFit: "contain" }} />
+          <div>
+            <span className="admin-login-logo__badge">Bloop Console</span>
+          </div>
           <h2>Hệ Thống Quản Trị</h2>
           <p>Đăng nhập bằng tài khoản Quản trị viên</p>
         </div>

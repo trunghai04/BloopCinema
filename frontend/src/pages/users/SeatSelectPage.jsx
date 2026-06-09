@@ -181,10 +181,11 @@ export default function SeatSelectPage() {
   const selectedSeats = useMemo(() => [...selected].sort(), [selected]);
   const codedSeatGrid = useMemo(() => {
     if (!freeSeats.length) return null;
-    const parsed = freeSeats
+    const nonAisleSeats = freeSeats.filter((s) => String(s.type || "standard").toLowerCase() !== "aisle");
+    const parsed = nonAisleSeats
       .map((s) => ({ seat: s, meta: parseSeatCode(s.code) }))
       .filter((x) => x.meta && x.meta.col > 0);
-    if (!parsed.length || parsed.length !== freeSeats.length) return null;
+    if (!parsed.length || parsed.length !== nonAisleSeats.length) return null;
 
     const rowMap = new Map(); // row -> Map<slotIdx, seat>
     let maxSlot = 0;
@@ -432,7 +433,7 @@ export default function SeatSelectPage() {
         ) : freeSeats.length ? (
           <div className="seat-grid-free-wrap">
             <div className="seat-grid-free">
-              {freeSeats.map((seat) => {
+              {freeSeats.filter((s) => String(s.type || "standard").toLowerCase() !== "aisle").map((seat) => {
                 const code = seat.code;
                 const soldSeat = soldSet.has(code);
                 const holdingSeat = holdingSet.has(code);

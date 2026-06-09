@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { getMovies, getShowtimes } from "../../api/client";
 import MovieCardBeta from "../../components/MovieCardBeta";
 import MovieTabs from "../../components/MovieTabs";
@@ -25,10 +26,15 @@ function isFuturePremiere(movie) {
 
 export default function MoviesPage() {
   const { selectedTheater } = useTheater();
+  const [params, setParams] = useSearchParams();
   const [movies, setMovies] = useState([]);
   const [showtimes, setShowtimes] = useState([]);
   const [loadError, setLoadError] = useState("");
-  const [tab, setTab] = useState("now");
+
+  const tab = params.get("tab") || "now";
+  const setTab = (newTab) => {
+    setParams({ tab: newTab });
+  };
 
   useEffect(() => {
     setLoadError("");
@@ -66,6 +72,14 @@ export default function MoviesPage() {
     return movies.filter((movie) => !isFuturePremiere(movie));
   }, [movies]);
 
+  const specialMovies = useMemo(() => {
+    return movies.filter((movie) => {
+      const isUpcoming = isFuturePremiere(movie);
+      const hasShowtimes = (showtimesByMovieId.get(movie.id) || []).length > 0;
+      return isUpcoming && hasShowtimes;
+    });
+  }, [movies, showtimesByMovieId]);
+
   return (
     <section>
       {loadError ? (
@@ -99,9 +113,21 @@ export default function MoviesPage() {
           ))}
         </div>
       ) : (
-        <p className="section-muted" style={{ textAlign: "center", padding: "32px 0" }}>
-          Suất chiếu đặc biệt sẽ được công bố trên trang khuyến mãi.
-        </p>
+        <div className="movie-grid-beta">
+          {specialMovies.map((movie, idx) => (
+            <MovieCardBeta
+              key={movie.id}
+              movie={movie}
+              showHot={idx < 2}
+              showBuyButton={(showtimesByMovieId.get(movie.id) || []).length > 0}
+            />
+          ))}
+          {!specialMovies.length && (
+            <p className="section-muted" style={{ textAlign: "center", padding: "32px 0", gridColumn: "1/-1" }}>
+              Hiện chưa có suất chiếu đặc biệt nào.
+            </p>
+          )}
+        </div>
       )}
     </section>
   );

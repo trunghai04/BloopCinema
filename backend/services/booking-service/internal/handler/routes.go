@@ -117,6 +117,7 @@ func (h *bookingHandler) createBooking(w http.ResponseWriter, r *http.Request) {
 
 	if h.orderClient != nil {
 		_, _ = h.orderClient.Create(r.Context(), order.CreateOrderRequest{
+			ID:              booking.ID,
 			UserEmail:       req.UserEmail,
 			MovieID:         req.MovieID,
 			MovieTitle:      movieTitle,

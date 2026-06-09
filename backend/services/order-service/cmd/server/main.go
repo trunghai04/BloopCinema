@@ -53,8 +53,27 @@ func main() {
 		os.Exit(1)
 	}
 
+	repo := repository.New(db)
 	mux := http.NewServeMux()
-	handler.RegisterRoutes(mux, repository.New(db))
+	handler.RegisterRoutes(mux, repo)
+
+	// Background ticker to fail pending orders older than 5 minutes
+	go func() {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			_, err := db.ExecContext(ctx, `
+				UPDATE orders
+				SET status = 'failed', updated_at = NOW()
+				WHERE status = 'pending' AND created_at < NOW() - INTERVAL '5 minutes'
+			`)
+			if err != nil {
+				logger.Error("failed to auto-expire pending orders", "error", err.Error())
+			}
+			cancel()
+		}
+	}()
 
 	server := &http.Server{
 		Addr:              ":" + port,
