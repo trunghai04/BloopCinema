@@ -45,6 +45,8 @@ services:
     container_name: cinema-jaeger
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
+      COLLECTOR_OTLP_GRPC_HOST_PORT: "0.0.0.0:4317"
+      COLLECTOR_OTLP_HTTP_HOST_PORT: "0.0.0.0:4318"
     ports:
       - "16686:16686"
       - "14250:14250"
@@ -149,6 +151,7 @@ services:
       SERVICE_PORT: "8081"
       DATABASE_URL: postgres://auth_user:auth_service_pw_change_me@postgres-auth:5432/auth_db?sslmode=disable
       JWT_SECRET: ${JWT_SECRET:-dev-super-secret-change-me}
+      USER_SERVICE_URL: http://user-service:8084
       OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4318
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8081/ready"]

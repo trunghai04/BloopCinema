@@ -325,42 +325,142 @@ func (h *reservationHandler) sendTicketEmail(ctx context.Context, res *model.Res
 	amountEsc := html.EscapeString(formatVietnameseMoney(totalAmount))
 	paidAtEsc := html.EscapeString(paidAt.In(time.FixedZone("ICT", 7*3600)).Format("02/01/2006 15:04"))
 
-	body := fmt.Sprintf(`
-<!DOCTYPE html>
+	body := fmt.Sprintf(`<!DOCTYPE html>
 <html lang="vi">
-  <body style="margin:0;padding:24px;background:#f1f5f9;font-family:Arial,sans-serif;color:#0f172a;">
-    <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #dbe4f0;border-radius:18px;overflow:hidden;box-shadow:0 16px 40px rgba(15,23,42,.08);">
-      <tr>
-        <td style="padding:22px 24px 10px;text-align:center;background:linear-gradient(135deg,#0ea5e9,#2563eb);color:#fff;">
-          <div style="font-size:13px;letter-spacing:.12em;text-transform:uppercase;opacity:.9;">Bloop Cinema</div>
-          <h1 style="margin:8px 0 0;font-size:28px;line-height:1.2;">Hóa đơn / vé điện tử</h1>
-        </td>
-      </tr>
-      <tr>
-        <td style="padding:24px;">
-          <table role="presentation" width="100%%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f8fbff;border:1px solid #e3ebf6;border-radius:16px;overflow:hidden;">
-            <tr><td style="padding:16px 18px;border-bottom:1px solid #e3ebf6;"><strong>Mã vé:</strong> %s</td></tr>
-            <tr><td style="padding:16px 18px;border-bottom:1px solid #e3ebf6;"><strong>Ghế:</strong> %s</td></tr>
-            <tr><td style="padding:16px 18px;border-bottom:1px solid #e3ebf6;"><strong>Email:</strong> %s</td></tr>
-            <tr><td style="padding:16px 18px;border-bottom:1px solid #e3ebf6;"><strong>Phim:</strong> %s</td></tr>
-            <tr><td style="padding:16px 18px;border-bottom:1px solid #e3ebf6;"><strong>Suất:</strong> %s</td></tr>
-            <tr><td style="padding:16px 18px;border-bottom:1px solid #e3ebf6;"><strong>Phòng:</strong> %s</td></tr>
-            <tr><td style="padding:16px 18px;border-bottom:1px solid #e3ebf6;"><strong>Tổng tiền:</strong> %s</td></tr>
-            <tr><td style="padding:16px 18px;"><strong>Thời gian thanh toán:</strong> %s</td></tr>
-          </table>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ve dien tu - Bloop Cinema</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f6f9; color: #1e293b; -webkit-font-smoothing: antialiased;">
+  <table border="0" cellpadding="0" cellspacing="0" width="100%%" style="table-layout: fixed; background-color: #f4f6f9; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <!-- Card Container -->
+        <table border="0" cellpadding="0" cellspacing="0" width="100%%" style="max-width: 600px; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(15, 39, 68, 0.05); border: 1px solid #e2e8f0;">
+          
+          <!-- Header Banner -->
+          <tr>
+            <td style="background-color: #0f2744; padding: 32px 40px; text-align: center;">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%%">
+                <tr>
+                  <td align="center" style="font-size: 13px; font-weight: 600; letter-spacing: 2px; color: #94a3b8; text-transform: uppercase;">
+                    BLOOP CINEMA
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center" style="font-size: 24px; font-weight: 800; color: #ffffff; padding-top: 8px; text-transform: uppercase;">
+                    Hoa don & Ve dien tu
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
 
-          <div style="text-align:center;margin:26px 0 14px;">
-            <div style="display:inline-block;padding:12px;background:#fff;border:1px solid #e2e8f0;border-radius:16px;">
-              <img alt="QR vé điện tử" src="cid:ticket-qr" width="220" height="220" style="display:block;border-radius:10px;background:#fff;" />
-            </div>
-          </div>
+          <!-- Body Content -->
+          <tr>
+            <td style="padding: 40px 40px 32px 40px;">
+              <h2 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 700; color: #0f2744;">
+                Cam on ban da dat ve!
+              </h2>
+              <p style="margin: 0 0 24px 0; font-size: 14px; line-height: 1.6; color: #475569;">
+                Giao dich cua ban da hoan tat thanh cong. Duoi day la thong tin chi tiet hoa don va ma QR ve dien tu cua ban. Vui long luu tru email nay va su dung ma QR ben duoi de lam thu tuc check-in nhan ve tai quay hoac may soat ve tu dong cua Bloop Cinema.
+              </p>
+              
+              <!-- Ticket Details Table -->
+              <table border="0" cellpadding="0" cellspacing="0" width="100%%" style="border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; font-size: 14px;">
+                <tr style="background-color: #f8fafc;">
+                  <td style="padding: 14px 16px; font-weight: 600; color: #0f2744; border-bottom: 1px solid #e2e8f0; width: 30%%;">Ma dat ve</td>
+                  <td style="padding: 14px 16px; color: #1e293b; border-bottom: 1px solid #e2e8f0; font-family: monospace; font-size: 15px; font-weight: bold;">%s</td>
+                </tr>
+                <tr>
+                  <td style="padding: 14px 16px; font-weight: 600; color: #0f2744; border-bottom: 1px solid #e2e8f0;">Phim</td>
+                  <td style="padding: 14px 16px; color: #1e293b; border-bottom: 1px solid #e2e8f0; font-weight: 600;">%s</td>
+                </tr>
+                <tr style="background-color: #f8fafc;">
+                  <td style="padding: 14px 16px; font-weight: 600; color: #0f2744; border-bottom: 1px solid #e2e8f0;">Suat chieu</td>
+                  <td style="padding: 14px 16px; color: #1e293b; border-bottom: 1px solid #e2e8f0;">%s</td>
+                </tr>
+                <tr>
+                  <td style="padding: 14px 16px; font-weight: 600; color: #0f2744; border-bottom: 1px solid #e2e8f0;">Phong chieu</td>
+                  <td style="padding: 14px 16px; color: #1e293b; border-bottom: 1px solid #e2e8f0;">%s</td>
+                </tr>
+                <tr style="background-color: #f8fafc;">
+                  <td style="padding: 14px 16px; font-weight: 600; color: #0f2744; border-bottom: 1px solid #e2e8f0;">Ghe da chon</td>
+                  <td style="padding: 14px 16px; color: #1e293b; border-bottom: 1px solid #e2e8f0; font-weight: 600;">%s</td>
+                </tr>
+                <tr>
+                  <td style="padding: 14px 16px; font-weight: 600; color: #0f2744; border-bottom: 1px solid #e2e8f0;">Tong thanh toan</td>
+                  <td style="padding: 14px 16px; color: #e11d48; border-bottom: 1px solid #e2e8f0; font-weight: bold; font-size: 16px;">%s</td>
+                </tr>
+                <tr style="background-color: #f8fafc;">
+                  <td style="padding: 14px 16px; font-weight: 600; color: #0f2744; border-bottom: 1px solid #e2e8f0;">Thoi gian GD</td>
+                  <td style="padding: 14px 16px; color: #475569; border-bottom: 1px solid #e2e8f0;">%s</td>
+                </tr>
+                <tr>
+                  <td style="padding: 14px 16px; font-weight: 600; color: #0f2744;">Email tai khoan</td>
+                  <td style="padding: 14px 16px; color: #475569;">%s</td>
+                </tr>
+              </table>
 
-          <p style="margin:18px 0 0;font-size:13px;color:#475569;text-align:center;line-height:1.6;">Xuất mã QR này khi check-in tại rạp. Dữ liệu mã khớp ghế đã thanh toán.</p>
-        </td>
-      </tr>
-    </table>
-  </body>
-</html>`, idEsc, seatLabelEsc, userEsc, movieLabelEsc, showtimeTime, roomLabel, amountEsc, paidAtEsc)
+              <!-- QR Code Block -->
+              <table border="0" cellpadding="0" cellspacing="0" width="100%%" style="margin: 35px 0 15px 0;">
+                <tr>
+                  <td align="center">
+                    <div style="display: inline-block; padding: 16px; background-color: #ffffff; border: 1px solid #cbd5e1; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+                      <img alt="QR code" src="cid:ticket-qr" width="220" height="220" style="display: block; border-radius: 6px;" />
+                    </div>
+                    <div style="font-size: 12px; color: #64748b; margin-top: 10px; font-style: italic;">
+                      Quet ma QR tai loi vao phong chieu hoac quay ve de in ve cung
+                    </div>
+                  </td>
+                </tr>
+              </table>
+
+            </td>
+          </tr>
+
+          <!-- Divider -->
+          <tr>
+            <td style="padding: 0 40px;">
+              <div style="border-top: 1px solid #f1f5f9; height: 1px; line-height: 1px; font-size: 1px;">&nbsp;</div>
+            </td>
+          </tr>
+
+          <!-- Footer Contact / Company Info -->
+          <tr>
+            <td style="padding: 32px 40px 40px 40px;">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%%" style="font-size: 12px; line-height: 1.6; color: #64748b;">
+                <tr>
+                  <td style="font-weight: 600; color: #1e293b; padding-bottom: 8px;">
+                    HE THONG RAP CHIEU PHIM BLOOP CINEMA
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    Dia chi: Toa nha Bloop Tower, So 1 Duong Xuan Thuy, Cau Giay, Ha Noi
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    Hotline: 1900 6868 | Email: support@bloopcinema.com
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-top: 20px; font-size: 11px; color: #94a3b8; text-align: center;">
+                    Day la email tu dong tu he thong Bloop Cinema. Vui long khong tra loi truc tiep email nay.
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`, idEsc, movieLabelEsc, showtimeTime, roomLabel, seatLabelEsc, amountEsc, paidAtEsc, userEsc)
 
 	msg := bytes.NewBuffer(nil)
 	fmt.Fprintf(msg, "From: %s\r\n", from)

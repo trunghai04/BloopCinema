@@ -75,9 +75,9 @@ func RegisterRoutes(mux *http.ServeMux, db *sql.DB) {
 	_ = ensureBcoinsSchema(context.Background(), userDB)
 	mux.HandleFunc("/health", health)
 	mux.HandleFunc("/ready", ready)
-	mux.HandleFunc("/api/v1/auth/login", login)
 	mux.HandleFunc("/api/v1/auth/register", register)
 	mux.HandleFunc("/api/v1/auth/verify-otp", verifyOTP)
+	mux.HandleFunc("/api/v1/users/verify-credentials", verifyCredentials)
 	mux.HandleFunc("/api/v1/users/me", me)
 	mux.HandleFunc("/api/v1/users/me/update", updateMe)
 }
@@ -187,15 +187,112 @@ MIME-Version: 1.0
 Content-Type: text/html; charset=UTF-8
 
 <!DOCTYPE html>
-<html>
-<body style="font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px;">
-  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 30px; border-radius: 8px; border: 1px solid #e3e3e3;">
-    <h2 style="color: #4f46e5; text-align: center;">Xac thuc email cua ban</h2>
-    <p>Chao mung ban den voi Bloop Cinema. Vui long su dung ma OTP duoi day de hoan tat qua trinh dang ky tai khoan:</p>
-    <div style="font-size: 32px; font-weight: bold; text-align: center; letter-spacing: 5px; margin: 30px 0; color: #4f46e5;">%s</div>
-    <p>Ma OTP nay co hieu luc trong 5 phut. Vui long khong chia se ma nay voi bat ky ai.</p>
-    <p style="font-size: 12px; color: #888888; border-top: 1px solid #eeeeee; padding-top: 20px;">Day la email tu dong, vui long khong tra loi.</p>
-  </div>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Xac thuc ma OTP - Bloop Cinema</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f6f9; color: #1e293b; -webkit-font-smoothing: antialiased;">
+  <table border="0" cellpadding="0" cellspacing="0" width="100%%" style="table-layout: fixed; background-color: #f4f6f9; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <!-- Card Container -->
+        <table border="0" cellpadding="0" cellspacing="0" width="100%%" style="max-width: 560px; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(15, 39, 68, 0.05); border: 1px solid #e2e8f0;">
+          
+          <!-- Header Banner -->
+          <tr>
+            <td style="background-color: #0f2744; padding: 32px 40px; text-align: center;">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%%">
+                <tr>
+                  <td align="center" style="font-size: 24px; font-weight: 800; letter-spacing: 2px; color: #ffffff; text-transform: uppercase;">
+                    BLOOP CINEMA
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center" style="font-size: 11px; font-weight: 500; letter-spacing: 4px; color: #94a3b8; text-transform: uppercase; padding-top: 6px;">
+                    Experience the Future of Cinema
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Body Content -->
+          <tr>
+            <td style="padding: 40px 40px 32px 40px;">
+              <h2 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 700; color: #0f2744; line-height: 1.4;">
+                Xac thuc tai khoan cua ban
+              </h2>
+              <p style="margin: 0 0 24px 0; font-size: 15px; line-height: 1.6; color: #475569;">
+                Chao mung ban den voi <strong>Bloop Cinema</strong>. De hoan tat viec thiet lap tai khoan va bat dau dat ve xem phim truc tuyen, vui long nhap ma xac thuc OTP (One-Time Password) duoi day tren trang dang ky:
+              </p>
+              
+              <!-- OTP Box -->
+              <table border="0" cellpadding="0" cellspacing="0" width="100%%" style="margin: 30px 0; background-color: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px;">
+                <tr>
+                  <td align="center" style="padding: 24px;">
+                    <div style="font-family: 'Courier New', Courier, monospace; font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #0f2744; margin: 0; padding-left: 8px; user-select: all;">
+                      %s
+                    </div>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Notice/Warning -->
+              <table border="0" cellpadding="0" cellspacing="0" width="100%%" style="margin: 24px 0 0 0; background-color: #fffbeb; border-left: 4px solid #f59e0b; border-radius: 4px;">
+                <tr>
+                  <td style="padding: 12px 16px; font-size: 13px; line-height: 1.5; color: #78350f;">
+                    <strong>Luu y bao mat:</strong> Ma xac thuc nay chi co hieu luc trong vong <strong>5 phut</strong>. Tuyet doi khong chia se ma nay voi bat ky ai de bao ve thong tin tai khoan cua ban.
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 24px 0 0 0; font-size: 14px; line-height: 1.6; color: #475569;">
+                Neu ban khong thuc hien yeu cau dang ky nay, xin vui long bo qua email nay. Tai khoan cua ban se khong duoc tao neu thieu ma xac thuc.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Divider -->
+          <tr>
+            <td style="padding: 0 40px;">
+              <div style="border-top: 1px solid #f1f5f9; height: 1px; line-height: 1px; font-size: 1px;">&nbsp;</div>
+            </td>
+          </tr>
+
+          <!-- Footer Contact / Company Info -->
+          <tr>
+            <td style="padding: 32px 40px 40px 40px;">
+              <table border="0" cellpadding="0" cellspacing="0" width="100%%" style="font-size: 12px; line-height: 1.6; color: #64748b;">
+                <tr>
+                  <td style="font-weight: 600; color: #1e293b; padding-bottom: 8px;">
+                    HE THONG RAP CHIEU PHIM BLOOP CINEMA
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    Dia chi: Toa nha Bloop Tower, So 1 Duong Xuan Thuy, Cau Giay, Ha Noi
+                  </td>
+                </tr>
+                <tr>
+                  <td>
+                    Hotline: 1900 6868 | Email: support@bloopcinema.com
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-top: 20px; font-size: 11px; color: #94a3b8; text-align: center;">
+                    Day la email tu dong tu he thong Bloop Cinema. Vui long khong tra loi truc tiep email nay.
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>
 `, to, from, otp)
@@ -284,12 +381,22 @@ ON CONFLICT (email) DO NOTHING
 	writeJSON(w, http.StatusCreated, map[string]string{"email": req.Email, "name": name})
 }
 
-func login(w http.ResponseWriter, r *http.Request) {
+type verifyCredentialsRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+type verifyCredentialsResponse struct {
+	Valid bool   `json:"valid"`
+	Role  string `json:"role"`
+}
+
+func verifyCredentials(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	var req loginRequest
+	var req verifyCredentialsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid json payload", http.StatusBadRequest)
 		return
@@ -300,24 +407,20 @@ func login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var passwordHash, role string
-	if err := userDB.QueryRowContext(r.Context(), `SELECT password_hash, role FROM users WHERE email = $1`, req.Email).Scan(&passwordHash, &role); err != nil {
+	err := userDB.QueryRowContext(r.Context(), `SELECT password_hash, role FROM users WHERE email = $1 AND password_hash <> ''`, req.Email).Scan(&passwordHash, &role)
+	if err != nil {
 		if err == sql.ErrNoRows {
-			http.Error(w, "invalid credentials", http.StatusUnauthorized)
+			writeJSON(w, http.StatusOK, verifyCredentialsResponse{Valid: false, Role: ""})
 			return
 		}
-		http.Error(w, "auth query failed", http.StatusInternalServerError)
+		http.Error(w, "database query failed", http.StatusInternalServerError)
 		return
 	}
 	if bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(req.Password)) != nil {
-		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+		writeJSON(w, http.StatusOK, verifyCredentialsResponse{Valid: false, Role: ""})
 		return
 	}
-	token, err := issueJWT(req.Email, role)
-	if err != nil {
-		http.Error(w, "token generation failed", http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, http.StatusOK, loginResponse{Token: token})
+	writeJSON(w, http.StatusOK, verifyCredentialsResponse{Valid: true, Role: role})
 }
 
 func me(w http.ResponseWriter, r *http.Request) {

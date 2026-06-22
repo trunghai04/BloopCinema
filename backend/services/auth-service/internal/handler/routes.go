@@ -1,11 +1,14 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -55,6 +58,51 @@ func ready(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
+type verifyCredentialsResponse struct {
+	Valid bool   `json:"valid"`
+	Role  string `json:"role"`
+}
+
+func verifyCustomer(ctx context.Context, email, password string) (bool, string, error) {
+	userServiceURL := strings.TrimSpace(os.Getenv("USER_SERVICE_URL"))
+	if userServiceURL == "" {
+		userServiceURL = "http://user-service:8084"
+	}
+
+	reqPayload := map[string]string{
+		"email":    email,
+		"password": password,
+	}
+	bodyBytes, err := json.Marshal(reqPayload)
+	if err != nil {
+		return false, "", err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, userServiceURL+"/api/v1/users/verify-credentials", bytes.NewReader(bodyBytes))
+	if err != nil {
+		return false, "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return false, "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var verifyResp verifyCredentialsResponse
+	if err := json.NewDecoder(resp.Body).Decode(&verifyResp); err != nil {
+		return false, "", err
+	}
+
+	return verifyResp.Valid, verifyResp.Role, nil
+}
+
 func login(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -72,14 +120,27 @@ func login(w http.ResponseWriter, r *http.Request) {
 	}
 	req.Email = strings.TrimSpace(strings.ToLower(req.Email))
 
+	// 1. Try to verify user as Admin/Local in auth_db
 	ok, role, err := verifyUser(r.Context(), authDB, req.Email, req.Password)
 	if err != nil {
 		http.Error(w, "auth query failed", http.StatusInternalServerError)
 		return
 	}
+
+	// 2. If not found or mismatch in local DB, try to verify in user-service (Customer)
 	if !ok {
-		http.Error(w, "invalid credentials", http.StatusUnauthorized)
-		return
+		customerOk, customerRole, customerErr := verifyCustomer(r.Context(), req.Email, req.Password)
+		if customerErr != nil {
+			fmt.Printf("verify customer failed: %v\n", customerErr)
+			http.Error(w, "invalid credentials", http.StatusUnauthorized)
+			return
+		}
+		if !customerOk {
+			http.Error(w, "invalid credentials", http.StatusUnauthorized)
+			return
+		}
+		ok = true
+		role = customerRole
 	}
 
 	token, err := issueJWT(req.Email, role)
