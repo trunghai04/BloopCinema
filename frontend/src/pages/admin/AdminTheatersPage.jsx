@@ -70,6 +70,15 @@ export default function AdminTheatersPage({ onCreated }) {
             <span>Mã code rạp</span>
             <input placeholder="Mã code" value={draft.code} onChange={(e) => setDraft((p) => ({ ...p, code: e.target.value }))} />
           </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, flexDirection: "row" }}>
+            <input
+              type="checkbox"
+              checked={Boolean(draft.active)}
+              onChange={(e) => setDraft((p) => ({ ...p, active: e.target.checked }))}
+              style={{ width: "auto", marginBottom: 0 }}
+            />
+            <span>Kích hoạt</span>
+          </label>
           <button type="submit" className="admin-login-submit">Lưu rạp</button>
         </form>
       </div>
@@ -84,6 +93,7 @@ export default function AdminTheatersPage({ onCreated }) {
               <tr>
                 <th>Tên rạp</th>
                 <th>Thông tin</th>
+                <th>TT</th>
                 <th style={{ textAlign: "right" }}>Thao tác</th>
               </tr>
             </thead>
@@ -92,6 +102,7 @@ export default function AdminTheatersPage({ onCreated }) {
                 <tr key={item.id}>
                   <td><strong>{item.name}</strong></td>
                   <td><code>{item.id}</code> · {item.city || ""} · {item.code || ""}</td>
+                  <td>{item.active !== false ? "✅" : "⛔"}</td>
                   <td style={{ textAlign: "right" }}>
                     <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                       <button type="button" className="btn-secondary" onClick={() => setDraft(item)}>Sửa</button>

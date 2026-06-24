@@ -508,6 +508,14 @@ export default function AdminPage() {
 
           <button
             type="button"
+            className={`admin-sidebar__item ${activeTab === "theaters" ? "admin-sidebar__item--active" : ""}`}
+            onClick={() => setActiveTab("theaters")}
+          >
+            Quản lý rạp
+          </button>
+
+          <button
+            type="button"
             className={`admin-sidebar__item ${activeTab === "orders" ? "admin-sidebar__item--active" : ""}`}
             onClick={() => setActiveTab("orders")}
           >
@@ -1004,7 +1012,9 @@ export default function AdminPage() {
           </div>
         ) : null}
 
-
+        {activeTab === "theaters" ? (
+          <AdminTheatersPage onCreated={loadAdminData} />
+        ) : null}
 
         {activeTab === "orders" ? (
           <div className="admin-glass-panel">
