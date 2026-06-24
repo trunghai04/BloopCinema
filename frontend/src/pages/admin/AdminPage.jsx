@@ -387,10 +387,17 @@ export default function AdminPage() {
     }
   }
 
-  async function removeLayout(hall) {
+  async function removeLayout(itemId, itemHall) {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa sơ đồ ghế "${itemHall}" không?`)) return;
     try {
-      await deleteAdminSeatLayout(hall);
-      setLayouts((prev) => prev.filter((l) => l.hall.toLowerCase() !== hall.toLowerCase()));
+      await deleteAdminSeatLayout(itemId, itemHall);
+      setLayouts((prev) => prev.filter((l) => {
+        const lid = String(l.id || "").toLowerCase();
+        const lhall = String(l.hall || "").toLowerCase();
+        const targetId = String(itemId || "").toLowerCase();
+        const targetHall = String(itemHall || "").toLowerCase();
+        return lid !== targetId && lhall !== targetHall;
+      }));
     } catch (e) {
       setError(e?.message || "Xóa layout thất bại.");
     }
@@ -930,7 +937,7 @@ export default function AdminPage() {
                         <button
                           type="button"
                           className="btn-secondary"
-                          onClick={() => removeLayout(l.id || l.hall)}
+                          onClick={() => removeLayout(l.id, l.hall)}
                         >
                           Xóa
                         </button>

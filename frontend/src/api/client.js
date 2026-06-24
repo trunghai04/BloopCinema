@@ -197,9 +197,11 @@ export async function upsertAdminSeatLayout(payload) {
   return parseJson(response);
 }
 
-export async function deleteAdminSeatLayout(idOrHall) {
-  const q = new URLSearchParams({ id: idOrHall, hall: idOrHall });
-  const response = await apiFetch(`/api/v1/admin/seat-layouts?${q}`, {
+export async function deleteAdminSeatLayout(id, hall) {
+  const params = new URLSearchParams();
+  if (id) params.set("id", id);
+  if (hall) params.set("hall", hall);
+  const response = await apiFetch(`/api/v1/admin/seat-layouts?${params}`, {
     method: "DELETE"
   });
   return parseJson(response);
