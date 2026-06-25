@@ -80,27 +80,35 @@ func checkoutSession(w http.ResponseWriter, r *http.Request) {
 
 	if secretKey != "" && secretKey != "mock" {
 		bookingURL := strings.TrimRight(strings.TrimSpace(os.Getenv("BOOKING_SERVICE_URL")), "/")
+		orderURL := strings.TrimRight(strings.TrimSpace(os.Getenv("ORDER_SERVICE_URL")), "/")
 		qty := int64(1)
 		pricePerSeat := int64(90000)
 
-		pricePerSeatStr := os.Getenv("TICKET_PRICE_PER_SEAT_VND")
-		if pricePerSeatStr != "" {
-			if val, err := strconv.ParseInt(pricePerSeatStr, 10, 64); err == nil && val > 0 {
-				pricePerSeat = val
-			}
-		}
-
-		if detail, err := fetchHoldDetail(bookingURL, req.HoldID); err == nil {
-			if raw, ok := detail["seatCodes"].(string); ok && strings.TrimSpace(raw) != "" {
-				parts := strings.Split(raw, ",")
-				n := int64(0)
-				for _, p := range parts {
-					if strings.TrimSpace(p) != "" {
-						n++
-					}
+		// Try to fetch the exact order amount from order-service
+		totalAmount, err := fetchOrderAmount(orderURL, req.HoldID)
+		if err == nil && totalAmount > 0 {
+			qty = 1
+			pricePerSeat = totalAmount
+		} else {
+			pricePerSeatStr := os.Getenv("TICKET_PRICE_PER_SEAT_VND")
+			if pricePerSeatStr != "" {
+				if val, err := strconv.ParseInt(pricePerSeatStr, 10, 64); err == nil && val > 0 {
+					pricePerSeat = val
 				}
-				if n > 0 {
-					qty = n
+			}
+
+			if detail, err := fetchHoldDetail(bookingURL, req.HoldID); err == nil {
+				if raw, ok := detail["seatCodes"].(string); ok && strings.TrimSpace(raw) != "" {
+					parts := strings.Split(raw, ",")
+					n := int64(0)
+					for _, p := range parts {
+						if strings.TrimSpace(p) != "" {
+							n++
+						}
+					}
+					if n > 0 {
+						qty = n
+					}
 				}
 			}
 		}
@@ -314,6 +322,31 @@ func fetchHoldDetail(baseURL, holdID string) (map[string]any, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+func fetchOrderAmount(orderServiceURL, orderID string) (int64, error) {
+	if orderServiceURL == "" || orderID == "" {
+		return 0, fmt.Errorf("order service unavailable")
+	}
+	req, err := http.NewRequest(http.MethodGet, orderServiceURL+"/api/v1/orders/"+orderID, nil)
+	if err != nil {
+		return 0, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return 0, fmt.Errorf("order fetch returned status %d", resp.StatusCode)
+	}
+	var out struct {
+		AmountVND int64 `json:"amountVnd"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return 0, err
+	}
+	return out.AmountVND, nil
 }
 
 func parseHoldIDFromSession(sessionID string) string {

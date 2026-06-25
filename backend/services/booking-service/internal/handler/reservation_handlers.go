@@ -131,13 +131,50 @@ func (h *reservationHandler) createHold(w http.ResponseWriter, r *http.Request) 
 			parsedStartAt, _ := catalog.ParseShowtimeStartAt(showtime.StartAt)
 			showtimeLabel = fmt.Sprintf("%s - %s", showtime.Hall, parsedStartAt.In(time.FixedZone("ICT", 7*3600)).Format("02/01/2006 15:04"))
 
-			pricePerSeat := int64(90000)
-			if priceStr := os.Getenv("TICKET_PRICE_PER_SEAT_VND"); priceStr != "" {
-				if val, err := strconv.ParseInt(priceStr, 10, 64); err == nil && val > 0 {
-					pricePerSeat = val
+			// Calculate total price dynamically using the seat layout and seat types
+			var totalAmount int64 = 0
+			layout, lerr := h.catalog.GetSeatLayoutByHall(r.Context(), showtime.TheaterID, showtime.Hall)
+			if lerr == nil && layout != nil {
+				// Map selected seats
+				selected := make(map[string]string)
+				for _, s := range req.Seats {
+					seat := strings.TrimSpace(strings.ToUpper(s))
+					if seat != "" {
+						selected[seat] = "standard" // default type
+					}
 				}
+				// Find actual seat types from layout
+				for _, s := range layout.Seats {
+					code := strings.TrimSpace(strings.ToUpper(s.Code))
+					if code == "" {
+						continue
+					}
+					if _, ok := selected[code]; ok && strings.TrimSpace(s.Type) != "" {
+						selected[code] = strings.ToLower(strings.TrimSpace(s.Type))
+					}
+				}
+				// Sum the prices of selected seat types
+				for _, seatType := range selected {
+					switch seatType {
+					case "vip":
+						totalAmount += int64(layout.SeatPrices.VIP)
+					case "couple":
+						totalAmount += int64(layout.SeatPrices.Couple)
+					default:
+						totalAmount += int64(layout.SeatPrices.Standard)
+					}
+				}
+				amountVnd = totalAmount
+			} else {
+				// Fallback if layout cannot be retrieved
+				pricePerSeat := int64(90000)
+				if priceStr := os.Getenv("TICKET_PRICE_PER_SEAT_VND"); priceStr != "" {
+					if val, err := strconv.ParseInt(priceStr, 10, 64); err == nil && val > 0 {
+						pricePerSeat = val
+					}
+				}
+				amountVnd = pricePerSeat * int64(len(req.Seats))
 			}
-			amountVnd = pricePerSeat * int64(len(req.Seats))
 		}
 
 		_, _ = h.orderClient.Create(r.Context(), order.CreateOrderRequest{
